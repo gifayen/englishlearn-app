@@ -125,8 +125,8 @@ export default function EssayClient() {
     <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
       {/* 左欄：標題＋按鈕列＋字數＋輸入框＋標示預覽 */}
       <section>
-        {/* 標題列 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {/* 標題列（保留原標題，不變動版面） */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>
             作文自動偵錯批改
           </h1>
@@ -143,7 +143,7 @@ export default function EssayClient() {
                 cursor: ltLoading || !text.trim() ? 'not-allowed' : 'pointer',
               }}
             >
-              {ltLoading ? '檢查中…' : '開始檢查'}
+              {ltLoading ? '檢查中…' : '開始檢查（文法）'}
             </button>
             <button
               onClick={handleGPT}
@@ -157,7 +157,7 @@ export default function EssayClient() {
                 cursor: gptLoading || !text.trim() ? 'not-allowed' : 'pointer',
               }}
             >
-              {gptLoading ? '產生中…' : '送給 GPT'}
+              {gptLoading ? '產生中…' : '送給 GPT（改寫）'}
             </button>
             <button
               onClick={handleClear}
@@ -174,6 +174,11 @@ export default function EssayClient() {
           </div>
         </div>
 
+        {/* 灰字說明（恢復） */}
+        <div style={{ color: '#777', fontSize: 13, marginBottom: 8 }}>
+          「開始檢查（文法）」進行拼字標點與文法偵錯；「送給 GPT（改寫）」產生僅含改寫後的完整文本。
+        </div>
+
         {/* 字數 */}
         <div style={{ color: '#666', marginBottom: 8 }}>Words: {wordCount}</div>
 
@@ -181,7 +186,7 @@ export default function EssayClient() {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="請貼上英文作文，點「開始檢查」或「送給 GPT」"
+          placeholder="請貼上英文作文，點「開始檢查（文法）」或「送給 GPT（改寫）」"
           spellCheck={false}
           style={{
             width: '100%',
@@ -218,7 +223,7 @@ export default function EssayClient() {
         </div>
       </section>
 
-      {/* 右欄：錯誤清單 + GPT 改寫 */}
+      {/* 右欄：錯誤清單 + GPT 改寫 + FAQ（灰字） */}
       <aside>
         {/* 錯誤清單 */}
         <div style={{ fontWeight: 700, marginBottom: 8, color: '#111' }}>
@@ -237,7 +242,7 @@ export default function EssayClient() {
             <div style={{ padding: 10, color: '#666' }}>檢查中…</div>
           ) : !matches.length ? (
             <div style={{ padding: 10, color: '#888' }}>
-              尚無結果，請在左側輸入內容後按「開始檢查」。
+              尚無結果，請在左側輸入內容後按「開始檢查（文法）」。
             </div>
           ) : (
             <table
@@ -303,6 +308,13 @@ export default function EssayClient() {
           >
             {gptLoading ? '產生中…' : gptOut || <span style={{ color: '#888' }}>尚未產生</span>}
           </div>
+        </div>
+
+        {/* FAQ（灰字，簡短） */}
+        <div style={{ marginTop: 12, color: '#777', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 600, color: '#555', marginBottom: 4 }}>FAQ</div>
+          <div>• 文法偵錯：使用 LT檢查主謂一致、時態、標點、拼字等。</div>
+          <div>• 改寫：使用 GPT 產生僅包含改寫後的完整文本（不含說明）。</div>
         </div>
 
         {/* 錯誤訊息 */}
