@@ -1,41 +1,109 @@
-// app/auth/debug/page.tsx
 'use client';
+
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-export default function DebugAuthPage() {
+export default function AuthDebugPage() {
 const supabase = createClientComponentClient();
-const [info, setInfo] = useState<any>({ loading: true });
+const [loading, setLoading] = useState(true);
+const [session, setSession] = useState<any>(null);
+const [profile, setProfile] = useState<any>(null);
+const [error, setError] = useState<string | null>(null);
 
 useEffect(() => {
-let alive = true;
-(async () => {
-const s1 = await supabase.auth.getSession();
-if (!alive) return;
-// 0.3 秒後再讀一次，避免剛登入時延遲
-setTimeout(async () => {
-const s2 = await supabase.auth.getSession();
-if (!alive) return;
-setInfo({
-loading: false,
-t1: Date.now(),
-user1: s1.data.session?.user ?? null,
-t2: Date.now(),
-user2: s2.data.session?.user ?? null,
+const fetchSessionAndProfile = async () => {
+try {
+setLoading(true);
+setError(null);
+
+// 1) 取得 session
+const { data: s, error: sessionError } = await supabase.auth.getSession();
+if (sessionError) throw sessionError;
+setSession(s.session);
+
+// 若未登入，結束
+if (!s.session?.user) {
+setLoading(false);
+return;
+}
+
+// 2) 取得使用者 profile
+const { data: p, error: profileError } = await supabase
+.from('profiles')
+.select('*')
+.eq('id', s.session.user.id) // ← 補上右括號
+.single();
+
+if (profileError) {
+setProfile(null);
+setError(profileError.message);
+} else {
+setProfile(p);
+}
+} catch (err: any) {
+setError(err?.message || 'Unknown error');
+} finally {
+setLoading(false);
+}
+};
+
+fetchSessionAndProfile();
+
+// 監聽登入狀態變化
+const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+setSession(sess);
 });
-}, 300);
-})();
-return () => { alive = false; };
+
+return () => {
+sub?.subscription?.unsubscribe();
+};
 }, [supabase]);
 
+if (loading) return <div style={{ padding: 16 }}>讀取中…</div>;
+
 return (
-<main style={{ padding: 16 }}>
-<h2>Auth Debug</h2>
-<pre style={{ whiteSpace: 'pre-wrap', background: '#fafafa', border: '1px solid #eee', padding: 12 }}>
-{JSON.stringify(info, null, 2)}
+<div style={{ padding: 16, fontFamily: 'system-ui' }}>
+<h1>🔍 登入狀態檢查</h1>
+
+{!session ? (
+<div style={{ color: 'crimson' }}>
+❌ 尚未登入，請先 <a href="/auth/login">登入</a>
+</div>
+) : (
+<div>
+<h2>✅ 已登入</h2>
+<p><b>Email：</b> {session.user.email}</p>
+<p><b>User ID：</b> {session.user.id}</p>
+<p><b>Access Token：</b> {session.access_token?.slice(0, 15)}...</p>
+</div>
+)}
+
+<hr style={{ margin: '16px 0' }} />
+
+<h2>📦 Profiles 資料</h2>
+{profile ? (
+<pre
+style={{
+background: '#f5f5f5',
+padding: 12,
+border: '1px solid #ddd',
+borderRadius: 4,
+whiteSpace: 'pre-wrap',
+wordBreak: 'break-word',
+}}
+>
+{JSON.stringify(profile, null, 2)}
 </pre>
-<p>若 <code>user2</code> 仍為 null，請檢查 <code>.env.local</code> 的 Supabase 變數與 <code>middleware.ts</code>。</p>
-</main>
+) : (
+<p>未找到 profiles 資料</p>
+)}
+
+{error && (
+<div style={{ color: 'crimson', marginTop: 12 }}>
+⚠️ 錯誤：{error}
+</div>
+)}
+</div>
 );
 }
 

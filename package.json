@@ -1,1 +1,39 @@
-{"name":"englishlearn-app","version":"0.1.0","private":true,"scripts":{"dev":"next dev --turbopack","build":"next build --turbopack","start":"next start","lint":"next lint"},"dependencies":{"@supabase/auth-helpers-nextjs":"^0.10.0","@supabase/supabase-js":"^2.56.1","next":"15.5.2","react":"19.1.0","react-dom":"19.1.0"},"devDependencies":{"@eslint/eslintrc":"^3","@tailwindcss/postcss":"^4","@types/node":"^20","@types/react":"^19","@types/react-dom":"^19","eslint":"^9","eslint-config-next":"15.5.2","tailwindcss":"^4","typescript":"^5"}}
+{
+  "name": "englishlearn-app",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.10 <21"
+  },
+  "scripts": {
+    "dev": "next dev --turbopack -p ${PORT:-3000}",
+    "build": "next build --turbopack",
+    "start": "next start -p ${PORT:-3000}",
+    "lint": "eslint .",
+    "snapshot": "bash snapshot.sh",
+    "restore": "bash restore.sh",
+    "clean": "rm -rf .next",
+    "dev:clean": "npm run clean && next dev --turbopack -p ${PORT:-3000}",
+    "go": "npm run dev:clean",
+    "doctor": "node -e \"console.log({NODE:process.version,SUPABASE_URL:process.env.NEXT_PUBLIC_SUPABASE_URL,LT_ENDPOINT:(process.env.LT_PLUS_ENDPOINT||process.env.LT_ENDPOINT),LT_API_KEY:Boolean(process.env.LT_API_KEY),OPENAI_KEY:Boolean(process.env.OPENAI_API_KEY),OPENAI_MODEL:process.env.OPENAI_MODEL})\"",
+    "lt:health": "node -e \"(async()=>{const base=(process.env.LT_PLUS_ENDPOINT||process.env.LT_ENDPOINT||'https://languagetool.org/api/v2');const url=base.replace(/\\/$/,'')+'/languages';const headers=process.env.LT_API_KEY?{Authorization:'Bearer '+process.env.LT_API_KEY}:{ };const r=await fetch(url,{headers});const t=await r.text();console.log({ok:r.ok,status:r.status,preview:t.slice(0,120)+'...'});process.exit(r.ok?0:1)})().catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.56.1",
+    "next": "15.5.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

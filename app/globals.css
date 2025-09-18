@@ -1,26 +1,128 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* === 全域預設樣式 === */
+*,
+*::before,
+*::after {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+height: 100%;
+margin: 0;
+padding: 0;
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+background-color: #f8f9fa;
+color: #222;
+line-height: 1.5;
 }
+
+/* === 錨點超連結預設樣式 === */
+a {
+color: #0070f3;
+text-decoration: none;
+}
+
+a:hover {
+text-decoration: underline;
+}
+
+/* === 頁面容器 === */
+body > div {
+padding: 16px;
+max-width: 1200px;
+margin: 0 auto;
+}
+
+/* === 表格預設樣式 === */
+table {
+width: 100%;
+border-collapse: collapse;
+}
+
+th,
+td {
+padding: 8px 12px;
+border-bottom: 1px solid #eee;
+text-align: left;
+}
+
+th {
+background-color: #f9f9f9;
+font-weight: 600;
+}
+
+/* === 按鈕樣式 === */
+button {
+background-color: #0070f3;
+color: white;
+border: none;
+padding: 6px 12px;
+border-radius: 4px;
+cursor: pointer;
+font-size: 14px;
+transition: background-color 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+background-color: #005bb5;
+}
+
+button:disabled {
+background-color: #ccc;
+cursor: not-allowed;
+}
+
+/* === contentEditable placeholder 樣式 === */
+div[contenteditable="true"][data-empty="true"]::before {
+content: attr(data-placeholder);
+color: #999;
+pointer-events: none;
+}
+
+/* 編輯區塊樣式 */
+div[contenteditable="true"] {
+outline: none;
+border: 1px solid #ccc;
+border-radius: 4px;
+padding: 10px;
+font-size: 14px;
+line-height: 1.5;
+background-color: #fff;
+transition: border-color 0.2s ease;
+}
+
+/* 聚焦時邊框高亮 */
+div[contenteditable="true"]:focus {
+border-color: #0070f3;
+}
+
+/* === 移除紅底線錯誤標記 === */
+div[contenteditable="true"] mark {
+background-color: transparent !important;
+text-decoration: none !important;
+}
+
+/* === 保留預覽區的黃底錯誤提示 === */
+.preview mark {
+background-color: #fff5c4;
+padding: 0 2px;
+border-radius: 2px;
+}
+
+/* 錯誤訊息樣式 */
+.error {
+color: crimson;
+margin-top: 8px;
+font-size: 14px;
+}
+
+/* 提示文字 */
+.hint {
+color: #777;
+font-size: 12px;
+margin-left: 8px;
+}
+

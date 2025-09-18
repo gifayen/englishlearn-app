@@ -1,173 +1,282 @@
-// app/essay-checker/ui/EssayClient.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 type LTMatch = {
-  index: number;
-  offset: number;
-  length: number;
   message: string;
   shortMessage?: string;
+  offset: number;
+  length: number;
   replacements?: { value: string }[];
   rule?: { id?: string; description?: string; issueType?: string };
-  sentence?: string;
+  index?: number;
 };
 
 export default function EssayClient() {
+  // ── state ───────────────────────────────────────────────────────────────
   const [text, setText] = useState('');
-  const [checking, setChecking] = useState(false);
+  const [ltLoading, setLtLoading] = useState(false);
+  const [gptLoading, setGptLoading] = useState(false);
   const [matches, setMatches] = useState<LTMatch[]>([]);
+  const [gptOut, setGptOut] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // 高亮預覽（把錯誤段落套 <mark>）
-  const previewHtml = useMemo(() => {
-    if (!text) return '';
-    if (!matches.length) return escapeHtml(text).replace(/\n/g, '<br/>');
+  // ── word count（以 words 為單位）────────────────────────────────────────
+  const wordCount = useMemo(() => {
+    const t = text.trim();
+    if (!t) return 0;
+    return t.split(/\s+/).filter(Boolean).length;
+  }, [text]);
 
-    let html = '';
-    let pos = 0;
-
-    for (const m of matches) {
-      const a = m.offset;
-      const b = m.offset + m.length;
-      if (a > pos) html += escapeHtml(text.slice(pos, a));
-      html += `<mark>${escapeHtml(text.slice(a, b))}</mark>`;
-      pos = b;
-    }
-    if (pos < text.length) html += escapeHtml(text.slice(pos));
-    return html.replace(/\n/g, '<br/>');
-  }, [text, matches]);
-
-  function escapeHtml(s: string) {
-    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-  }
-
-  function clearAll() {
-    setText('');
-    setMatches([]);
-    setError(null);
-    // 回到輸入框
-    queueMicrotask(() => inputRef.current?.focus());
-  }
-
-  async function startCheck() {
+  // ── 呼叫 LanguageTool 檢查 ────────────────────────────────────────────
+  async function handleCheck() {
     if (!text.trim()) return;
-    setChecking(true);
+    setLtLoading(true);
     setError(null);
     setMatches([]);
-
     try {
       const res = await fetch('/api/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          language: 'en-US',
+          level: 'picky', // 嚴格模式
+        }),
       });
-      const j = await res.json();
-      if (!res.ok) {
-        throw new Error(j?.error || `HTTP ${res.status}`);
-      }
-      const ms: LTMatch[] = (j?.matches ?? []).map((x: any) => ({
-        index: x.index,
-        offset: x.offset,
-        length: x.length,
-        message: x.message,
-        shortMessage: x.shortMessage,
-        replacements: x.replacements,
-        rule: x.rule,
-        sentence: x.sentence,
-      }));
-      setMatches(ms);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setMatches(Array.isArray(data.matches) ? data.matches : []);
     } catch (e: any) {
-      setError(e?.message || '檢查失敗');
+      setError(e?.message || 'Unknown error');
     } finally {
-      setChecking(false);
+      setLtLoading(false);
     }
   }
 
-  // 使用者一旦開始修改/貼上，就把舊的「錯誤清單」先清掉，避免干擾
-  function onInputChange(v: string) {
-    if (matches.length) setMatches([]);
+  // ── 呼叫 GPT 改寫（只回傳改寫後純文本）──────────────────────────────
+  async function handleGPT() {
+    if (!text.trim()) return;
+    setGptLoading(true);
     setError(null);
-    setText(v);
+    setGptOut('');
+    try {
+      const res = await fetch('/api/gpt-rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setGptOut((data?.rewritten || '').toString());
+    } catch (e: any) {
+      setError(e?.message || 'Unknown error');
+    } finally {
+      setGptLoading(false);
+    }
   }
 
+  // ── 清除全部 ──────────────────────────────────────────────────────────
+  function handleClear() {
+    setText('');
+    setMatches([]);
+    setGptOut('');
+    setError(null);
+  }
+
+  // ── 產生標示預覽（黃底），自動略過重疊 range ──────────────────────────
+  const highlighted = useMemo(() => {
+    if (!text) return null;
+    if (!matches?.length) return <span>{text}</span>;
+
+    const sorted = [...matches].sort((a, b) => a.offset - b.offset || a.length - b.length);
+    const nodes: React.ReactNode[] = [];
+    let cursor = 0;
+    let lastEnd = -1;
+
+    for (const m of sorted) {
+      const start = m.offset;
+      const end = m.offset + m.length;
+      if (start < lastEnd) continue; // 略過重疊
+      if (start > cursor) {
+        nodes.push(<span key={`t-${cursor}`}>{text.slice(cursor, start)}</span>);
+      }
+      nodes.push(
+        <mark
+          key={`m-${start}-${end}`}
+          style={{
+            background: 'rgba(255,230,150,0.9)',
+            padding: 0,
+          }}
+          title={(m.rule?.id ? `[${m.rule.id}] ` : '') + (m.message || '')}
+        >
+          {text.slice(start, end)}
+        </mark>
+      );
+      cursor = end;
+      lastEnd = end;
+    }
+    if (cursor < text.length) nodes.push(<span key={`t-tail-${cursor}`}>{text.slice(cursor)}</span>);
+    return <span>{nodes}</span>;
+  }, [text, matches]);
+
+  // ── UI ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 1fr', gap: 16 }}>
-      {/* 左側：輸入 */}
-      <div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-          <button onClick={startCheck} disabled={checking} style={{ padding: '6px 10px' }}>
-            {checking ? '檢查中…' : '開始檢查'}
-          </button>
-          <button onClick={clearAll} disabled={checking} style={{ padding: '6px 10px' }}>
-            清空／重新開始
-          </button>
-          <span style={{ color: '#777', fontSize: 12 }}>貼上新文章後可直接按「開始檢查」</span>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+      {/* 左欄：標題＋按鈕列＋字數＋輸入框＋標示預覽 */}
+      <section>
+        {/* 標題列 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>
+            作文自動偵錯批改
+          </h1>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleCheck}
+              disabled={ltLoading || !text.trim()}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                background: ltLoading ? '#eee' : '#fff',
+                color: '#111',
+                cursor: ltLoading || !text.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {ltLoading ? '檢查中…' : '開始檢查'}
+            </button>
+            <button
+              onClick={handleGPT}
+              disabled={gptLoading || !text.trim()}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                background: gptLoading ? '#eee' : '#fff',
+                color: '#111',
+                cursor: gptLoading || !text.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {gptLoading ? '產生中…' : '送給 GPT'}
+            </button>
+            <button
+              onClick={handleClear}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                background: '#fff',
+                color: '#111',
+              }}
+            >
+              清除
+            </button>
+          </div>
         </div>
 
+        {/* 字數 */}
+        <div style={{ color: '#666', marginBottom: 8 }}>Words: {wordCount}</div>
+
+        {/* 輸入框 */}
         <textarea
-          ref={inputRef}
           value={text}
-          onChange={(e) => onInputChange(e.target.value)}
-          placeholder="把英文作文貼在這裡（支援長文，自動分段送檢）"
-          rows={14}
-          style={{ width: '100%', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 14, padding: 10 }}
-          onPaste={(e) => {
-            // 直接貼新文時，自動清掉舊結果，體驗更順手
-            if (matches.length) setMatches([]);
-            setError(null);
-            // 讓預設貼上行為繼續（這行保留即可）
-            // 貼上後自動聚焦在文末（原生會處理）
-          }}
-        />
-
-        {error && (
-          <div style={{ color: 'crimson', marginTop: 8 }}>錯誤：{error}</div>
-        )}
-      </div>
-
-      {/* 右側：結果 */}
-      <div>
-        <h3>預覽（錯誤段落會標黃）</h3>
-        <div
+          onChange={(e) => setText(e.target.value)}
+          placeholder="請貼上英文作文，點「開始檢查」或「送給 GPT」"
+          spellCheck={false}
           style={{
+            width: '100%',
+            height: 220,
+            border: '1px solid #ccc',
+            borderRadius: 6,
             padding: 10,
-            border: '1px solid #eee',
-            borderRadius: 4,
-            minHeight: 150,
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+            fontSize: 14,
             lineHeight: 1.6,
+            color: '#111',
             background: '#fff',
           }}
-          dangerouslySetInnerHTML={{ __html: previewHtml || '<span style="color:#777">尚無內容</span>' }}
         />
-        <h3 style={{ marginTop: 12 }}>錯誤清單（{matches.length}）</h3>
-        <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #eee', borderRadius: 4 }}>
-          {!matches.length ? (
-            <div style={{ padding: 10, color: '#777' }}>目前沒有項目</div>
+
+        {/* 標示預覽 */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: '#111' }}>標示預覽</div>
+          <div
+            style={{
+              border: '1px solid #eee',
+              borderRadius: 6,
+              padding: 10,
+              minHeight: 120,
+              background: '#fff',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#111',
+            }}
+          >
+            {matches?.length ? highlighted : <span style={{ color: '#888' }}>尚無結果</span>}
+          </div>
+        </div>
+      </section>
+
+      {/* 右欄：錯誤清單 + GPT 改寫 */}
+      <aside>
+        {/* 錯誤清單 */}
+        <div style={{ fontWeight: 700, marginBottom: 8, color: '#111' }}>
+          錯誤清單（{matches.length}）
+        </div>
+        <div
+          style={{
+            border: '1px solid #eee',
+            borderRadius: 6,
+            background: '#fff',
+            maxHeight: 260,
+            overflow: 'auto',
+          }}
+        >
+          {ltLoading ? (
+            <div style={{ padding: 10, color: '#666' }}>檢查中…</div>
+          ) : !matches.length ? (
+            <div style={{ padding: 10, color: '#888' }}>
+              尚無結果，請在左側輸入內容後按「開始檢查」。
+            </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: 14,
+                color: '#111',
+              }}
+            >
               <thead>
                 <tr>
-                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>#</th>
-                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>類型</th>
-                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>建議</th>
-                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>說明 / 句子</th>
+                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>
+                    #
+                  </th>
+                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>
+                    類型
+                  </th>
+                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>
+                    建議
+                  </th>
+                  <th style={{ borderBottom: '1px solid #eee', padding: 8, textAlign: 'left' }}>
+                    說明 / 句子
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {matches.map((m, i) => {
-                  const kind = m.rule?.issueType || m.rule?.id || 'issue';
-                  const suggestion = m.replacements?.[0]?.value || '—';
+                  const typ = m.rule?.issueType || m.rule?.id || '—';
+                  const sug = m.replacements?.[0]?.value ? `→ ${m.replacements[0].value}` : '—';
+                  const snip = text.slice(m.offset, m.offset + m.length);
                   return (
-                    <tr key={m.index}>
-                      <td style={{ borderBottom: '1px solid #f4f4f4', padding: 8 }}>{i + 1}</td>
-                      <td style={{ borderBottom: '1px solid #f4f4f4', padding: 8 }}>{kind}</td>
-                      <td style={{ borderBottom: '1px solid #f4f4f4', padding: 8 }}>{suggestion}</td>
-                      <td style={{ borderBottom: '1px solid #f4f4f4', padding: 8 }}>
-                        <div style={{ color: '#444', marginBottom: 4 }}>{m.message}</div>
-                        {m.sentence && <div style={{ color: '#666' }}>{m.sentence}</div>}
+                    <tr key={`mrow-${i}`}>
+                      <td style={{ borderBottom: '1px solid #f3f3f3', padding: 8 }}>{i + 1}</td>
+                      <td style={{ borderBottom: '1px solid #f3f3f3', padding: 8 }}>{typ}</td>
+                      <td style={{ borderBottom: '1px solid #f3f3f3', padding: 8 }}>{sug}</td>
+                      <td style={{ borderBottom: '1px solid #f3f3f3', padding: 8 }}>
+                        <div style={{ color: '#333' }}>{m.message || m.shortMessage || '—'}</div>
+                        <div style={{ color: '#888' }}>「{snip}」</div>
                       </td>
                     </tr>
                   );
@@ -176,7 +285,33 @@ export default function EssayClient() {
             </table>
           )}
         </div>
-      </div>
+
+        {/* GPT 改寫（純文本） */}
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: '#111' }}>GPT 改寫</div>
+          <div
+            style={{
+              border: '1px solid #eee',
+              borderRadius: 6,
+              padding: 10,
+              minHeight: 140,
+              background: '#fff',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#111',
+            }}
+          >
+            {gptLoading ? '產生中…' : gptOut || <span style={{ color: '#888' }}>尚未產生</span>}
+          </div>
+        </div>
+
+        {/* 錯誤訊息 */}
+        {error && (
+          <div style={{ color: 'crimson', marginTop: 12 }}>
+            錯誤：{error}
+          </div>
+        )}
+      </aside>
     </div>
   );
 }

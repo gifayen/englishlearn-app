@@ -4,23 +4,26 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 
-// 主要端點（可由 .env.local 覆寫），與備援端點
-const PRIMARY = process.env.LT_ENDPOINT ?? 'https://api.languagetool.org/v2/check';
-const FALLBACK = 'https://languagetool.org/api/v2/check';
+const PLUS_ENDPOINT = (process.env.LT_PLUS_ENDPOINT || 'https://api.languagetoolplus.com/v2/check').trim();
+const FREE_ENDPOINT = (process.env.LT_ENDPOINT || 'https://languagetool.org/api/v2/check').trim();
 
-// 比之前再保守一些
-const MAX_CHARS_PER_CHUNK = parseInt(process.env.LT_MAX_CHARS ?? '380', 10);
-const LT_TIMEOUT_MS = parseInt(process.env.LT_TIMEOUT_MS ?? '12000', 10);
-const CHUNK_DELAY_MS = parseInt(process.env.LT_CHUNK_DELAY_MS ?? '600', 10);
+const LT_API_KEY = (process.env.LT_API_KEY || '').trim();
+const DEFAULT_LANG = (process.env.LT_DEFAULT_LANG || 'en-US').trim();
+const LEVEL = (process.env.LT_LEVEL || 'picky').trim();
 
-function chunkText(input: string, max = MAX_CHARS_PER_CHUNK): { text: string; originOffset: number }[] {
+const TIMEOUT_MS = Number(process.env.LT_TIMEOUT_MS || 20000);
+const MAX_CHARS = Number(process.env.LT_MAX_CHARS || 320);
+const PER_ENDPOINT_RETRIES = Number(process.env.LT_PER_ENDPOINT_RETRIES || 2);
+const RETRY_BASE_DELAY_MS = Number(process.env.LT_RETRY_BASE_DELAY_MS || 350);
+
+// 文字切塊（盡量在自然斷點切）
+function chunkText(input: string, max = MAX_CHARS): { text: string; originOffset: number }[] {
   const chunks: { text: string; originOffset: number }[] = [];
   let i = 0;
   while (i < input.length) {
     let end = Math.min(i + max, input.length);
     if (end < input.length) {
       const slice = input.slice(i, end);
-      // 嘗試在合理邊界切段
       let pivot = slice.lastIndexOf('\n\n');
       if (pivot < max * 0.5) {
         const p1 = slice.lastIndexOf('. ');
@@ -33,119 +36,85 @@ function chunkText(input: string, max = MAX_CHARS_PER_CHUNK): { text: string; or
     chunks.push({ text: piece, originOffset: i });
     i = end;
   }
-  if (chunks.length === 0) chunks.push({ text: input, originOffset: 0 });
+  if (!chunks.length) chunks.push({ text: input, originOffset: 0 });
   return chunks;
 }
 
 type CheckBody = {
   text: string;
-  language?: string;
+  // 這兩個可傳，但若沒傳我們強制用預設
+  language?: string; // e.g. en-US
   level?: 'default' | 'picky';
-  motherTongue?: string;
-  preferredVariants?: string;
-  disabledRules?: string[];
-  enabledRules?: string[];
 };
 
-async function callLTOnce(endpoint: string, text: string, opts: CheckBody, attempt = 1): Promise<any> {
-  const params = new URLSearchParams();
-  // ✅ 只送最小必要參數，避免 400
-  params.set('text', text);
-  params.set('language', opts.language || 'en-US');
-  if (opts.level && (opts.level === 'default' || opts.level === 'picky')) {
-    params.set('level', opts.level);
-  }
-  if (opts.enabledRules?.length) {
-    params.set('enabledRules', opts.enabledRules.join(','));
-    params.set('enabledOnly', 'true');
-  }
-  if (opts.disabledRules?.length) {
-    params.set('disabledRules', opts.disabledRules.join(','));
-  }
-
-  const ac = new AbortController();
-  const to = setTimeout(() => ac.abort('timeout'), LT_TIMEOUT_MS);
-
-  let res: Response | null = null;
+// 具超時/重試的 fetch
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'Accept': 'application/json',
-        'User-Agent': 'englishlearn-app/1.0',
-      },
-      body: params,
-      cache: 'no-store',
-      signal: ac.signal,
-    });
-  } catch (err: any) {
-    clearTimeout(to);
-    // 連線層就丟錯（逾時 / 網路例外）
-    const name = err?.name || 'FetchError';
-    const msg = err?.message || String(err);
-    console.error(`[LT fetch-error] ${name}: ${msg} @ ${endpoint}`);
-    // 逾時或網路錯誤：若還有重試次數就等一下再來
-    if (attempt < 3) {
-      await new Promise(r => setTimeout(r, 400 * attempt));
-      return callLTOnce(endpoint, text, opts, attempt + 1);
-    }
-    const e2: any = new Error(`${name}: ${msg}`);
-    e2.status = name === 'AbortError' ? 504 : 500;
-    throw e2;
+    // @ts-ignore
+    init.signal = ctrl.signal;
+    return await fetch(url, init);
   } finally {
-    clearTimeout(to);
+    clearTimeout(id);
+  }
+}
+
+async function callLT(
+  endpoint: string,
+  text: string,
+  lang: string,
+  level: string,
+  useAuth: boolean,
+  attempt = 1
+): Promise<any> {
+  const body = new URLSearchParams();
+  body.set('text', text);
+  body.set('language', lang); // 固定語言，避免 preferredVariants/motherTongue 造成 400
+  if (level) body.set('level', level);
+  body.set('enabledOnly', 'false');
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'englishlearn-app/1.0',
+  };
+  if (useAuth && LT_API_KEY) {
+    headers.Authorization = `Bearer ${LT_API_KEY}`;
   }
 
-  // 優先 JSON，失敗退回 text
-  let bodyText: string | null = null;
+  const res = await fetchWithTimeout(
+    endpoint,
+    { method: 'POST', headers, body, cache: 'no-store' },
+    TIMEOUT_MS
+  );
+
   let json: any = null;
   try {
     json = await res.json();
   } catch {
-    try { bodyText = await res.text(); } catch { bodyText = null; }
+    json = null;
   }
 
-  // 429/5xx -> 重試（指數退避）
-  if ((res.status === 429 || res.status >= 500) && attempt < 3) {
-    await new Promise(r => setTimeout(r, 400 * attempt));
-    return callLTOnce(endpoint, text, opts, attempt + 1);
+  // 429/5xx → 指數退避重試
+  if ((res.status === 429 || res.status >= 500) && attempt <= PER_ENDPOINT_RETRIES) {
+    const delay = RETRY_BASE_DELAY_MS * attempt;
+    await new Promise((r) => setTimeout(r, delay));
+    return callLT(endpoint, text, lang, level, useAuth, attempt + 1);
   }
 
   if (!res.ok) {
-    const detail = (json && (json.message || json.error)) || bodyText || res.statusText || 'Unknown error';
-    console.error(`[LT error] ${res.status} @ ${endpoint} ::`, detail);
-    const err = new Error(detail) as any;
+    const detail =
+      json?.message ||
+      json?.error ||
+      res.statusText ||
+      'Bad Request';
+    const err: any = new Error(detail);
     err.status = res.status;
-    err.raw = json || bodyText || null;
+    err.raw = json;
     throw err;
   }
 
   return json;
-}
-
-// 嘗試主要端點；若 400 且沒有明確訊息，再用備援端點重試一次
-// 嘗試主要端點；只要 400 就改打備援端點（因為公用主端常回無意義的 "Bad Request"）
-async function callLTWithFallback(text: string, opts: CheckBody): Promise<any> {
-  const forceFallback = (process.env.LT_FORCE_FALLBACK ?? '').toLowerCase() === 'true';
-
-  // 直接強制走備援（可用於公用主端抽風時）
-  if (forceFallback) {
-    console.warn('[LT] forcing fallback endpoint due to LT_FORCE_FALLBACK=true');
-    return callLTOnce(FALLBACK, text, opts);
-  }
-
-  try {
-    return await callLTOnce(PRIMARY, text, opts);
-  } catch (e: any) {
-    const status = e?.status;
-    // ✅ 只要主端回 400，就改打備援
-    if (status === 400) {
-      console.warn('[LT warn] 400 from primary, retrying with fallback endpoint…');
-      return callLTOnce(FALLBACK, text, opts).catch((ee: any) => { throw ee; });
-    }
-    throw e;
-  }
 }
 
 export async function POST(req: Request) {
@@ -155,34 +124,29 @@ export async function POST(req: Request) {
     const text = raw.trim();
     if (!text) return NextResponse.json({ matches: [] });
 
-    // 整體字數硬限制，避免一次塞超長文
-    if (text.length > 120_000) {
-      return NextResponse.json(
-        { error: 'Text too long. Please split it into smaller parts.', status: 400 },
-        { status: 400 }
-      );
-    }
+    // 固定語言與等級（可被 body 覆蓋，但會 fallback 到預設）
+    const lang = (body.language || DEFAULT_LANG || 'en-US').trim();
+    const level = (body.level || LEVEL || 'picky').trim();
 
-    const opts: CheckBody = {
-      language: body.language || 'en-US',
-      level: body.level || 'picky',
-      motherTongue: body.motherTongue || 'zh-TW',
-      preferredVariants: body.preferredVariants || body.language || 'en-US',
-      disabledRules: body.disabledRules ?? [],
-      enabledRules: body.enabledRules ?? [],
-    };
+    // 有 API KEY → 只打 Plus；沒有 → 打 Free
+    const plan = LT_API_KEY ? 'plus' : 'free';
+    const endpoint = plan === 'plus' ? PLUS_ENDPOINT : FREE_ENDPOINT;
 
+    // 切塊逐一檢查並合併
     const chunks = chunkText(text);
-    console.log(`[LT] total chars=${text.length}, chunks=${chunks.length}, maxPerChunk=${MAX_CHARS_PER_CHUNK}`);
-
     const allMatches: any[] = [];
-    for (let idx = 0; idx < chunks.length; idx++) {
-      const ch = chunks[idx];
+
+    // 紀錄 debug（伺服器端才看得到）
+    console.log(
+      `[LT] total chars=${text.length}, chunks=${chunks.length}, maxPerChunk=${MAX_CHARS}, plan=${plan}`
+    );
+
+    for (let i = 0; i < chunks.length; i++) {
+      const ch = chunks[i];
       if (!ch.text.trim()) continue;
-      if (idx > 0) await new Promise(r => setTimeout(r, CHUNK_DELAY_MS)); // 限速
-      // 統計每段長度，方便 debug
-      console.log(`[LT] chunk ${idx + 1}/${chunks.length}, len=${ch.text.length}`);
-      const out = await callLTWithFallback(ch.text, opts);
+      console.log(`[LT] chunk ${i + 1}/${chunks.length}, len=${ch.text.length}`);
+
+      const out = await callLT(endpoint, ch.text, lang, level, plan === 'plus');
       const ms: any[] = out.matches || [];
       for (const m of ms) {
         allMatches.push({ ...m, offset: m.offset + ch.originOffset });
@@ -195,10 +159,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ matches: withIndex });
   } catch (e: any) {
-    const status = e?.status || (e?.name === 'AbortError' ? 504 : 500);
-    return NextResponse.json(
-      { error: e?.message || 'Unknown error', status, raw: e?.raw ?? null },
-      { status }
-    );
+    // 將錯誤原樣回傳，方便你在前端看到細節
+    const status = e?.status || 500;
+    const payload = {
+      error: e?.message || 'LanguageTool request failed',
+      status,
+      raw: e?.raw ?? null,
+    };
+    console.error('[LT fatal]', payload);
+    return NextResponse.json(payload, { status });
   }
 }

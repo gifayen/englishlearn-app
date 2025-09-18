@@ -2,7 +2,7 @@
 export default function HomePage() {
 return (
 <main style={{ padding: 16 }}>
-<h1>EnglishLearn</h1>
+<h1>EnglishLearning</h1>
 <p>歡迎！請從上方導覽列選擇功能。</p>
 <ul style={{ lineHeight: 1.9, marginTop: 12 }}>
 <li>👉 <a href="/essay-checker">作文自動偵錯批改</a></li>
