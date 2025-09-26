@@ -3,3 +3,4 @@ node_modules/
 .next/
 snapshots/
 .env.local
+.env.local # 避免把金鑰傳上去
