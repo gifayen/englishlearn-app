@@ -3,6 +3,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers'; // ✅ 新增
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'; // ✅ 新增
 
 const PLUS_ENDPOINT = (process.env.LT_PLUS_ENDPOINT || 'https://api.languagetoolplus.com/v2/check').trim();
 const FREE_ENDPOINT = (process.env.LT_ENDPOINT || 'https://languagetool.org/api/v2/check').trim();
@@ -42,7 +44,6 @@ function chunkText(input: string, max = MAX_CHARS): { text: string; originOffset
 
 type CheckBody = {
   text: string;
-  // 這兩個可傳，但若沒傳我們強制用預設
   language?: string; // e.g. en-US
   level?: 'default' | 'picky';
 };
@@ -70,7 +71,7 @@ async function callLT(
 ): Promise<any> {
   const body = new URLSearchParams();
   body.set('text', text);
-  body.set('language', lang); // 固定語言，避免 preferredVariants/motherTongue 造成 400
+  body.set('language', lang);
   if (level) body.set('level', level);
   body.set('enabledOnly', 'false');
 
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
     const chunks = chunkText(text);
     const allMatches: any[] = [];
 
-    // 紀錄 debug（伺服器端才看得到）
+    // 紀錄 debug（伺服器端）
     console.log(
       `[LT] total chars=${text.length}, chunks=${chunks.length}, maxPerChunk=${MAX_CHARS}, plan=${plan}`
     );
@@ -157,9 +158,20 @@ export async function POST(req: Request) {
       .sort((a, b) => a.offset - b.offset)
       .map((m, i) => ({ ...m, index: i }));
 
+    // ✅ 成功取得結果 → 若使用者已登入，計數 +1（一次請求只做一次）
+    try {
+      const supabase = createRouteHandlerClient({ cookies });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.rpc('increment_essay_check');
+      }
+    } catch (e) {
+      // 靜默；不影響回應
+      console.warn('[usage increment skipped]', (e as any)?.message || e);
+    }
+
     return NextResponse.json({ matches: withIndex });
   } catch (e: any) {
-    // 將錯誤原樣回傳，方便你在前端看到細節
     const status = e?.status || 500;
     const payload = {
       error: e?.message || 'LanguageTool request failed',

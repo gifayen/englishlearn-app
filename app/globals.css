@@ -2,127 +2,253 @@
 *,
 *::before,
 *::after {
-box-sizing: border-box;
-margin: 0;
-padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html,
 body {
-height: 100%;
-margin: 0;
-padding: 0;
-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-background-color: #f8f9fa;
-color: #222;
-line-height: 1.5;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: #f8f9fa;
+  color: #222;
+  line-height: 1.5;
 }
 
-/* === 錨點超連結預設樣式 === */
-a {
-color: #0070f3;
-text-decoration: none;
-}
+/* 平滑捲動 */
+html { scroll-behavior: smooth; }
 
-a:hover {
-text-decoration: underline;
-}
+/* 站內連結（預設） */
+a { color: #0070f3; text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* === 頁面容器 === */
+/* 版心容器（你原本的布局） */
 body > div {
-padding: 16px;
-max-width: 1200px;
-margin: 0 auto;
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-/* === 表格預設樣式 === */
-table {
-width: 100%;
-border-collapse: collapse;
+/* 表格 */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
 }
+th { background-color: #f9f9f9; font-weight: 600; }
 
-th,
-td {
-padding: 8px 12px;
-border-bottom: 1px solid #eee;
-text-align: left;
-}
-
-th {
-background-color: #f9f9f9;
-font-weight: 600;
-}
-
-/* === 按鈕樣式 === */
-button {
-background-color: #0070f3;
-color: white;
-border: none;
-padding: 6px 12px;
-border-radius: 4px;
-cursor: pointer;
-font-size: 14px;
-transition: background-color 0.2s ease;
-}
-
-button:hover:not(:disabled) {
-background-color: #005bb5;
-}
-
-button:disabled {
-background-color: #ccc;
-cursor: not-allowed;
-}
-
-/* === contentEditable placeholder 樣式 === */
+/* contentEditable placeholder */
 div[contenteditable="true"][data-empty="true"]::before {
-content: attr(data-placeholder);
-color: #999;
-pointer-events: none;
+  content: attr(data-placeholder);
+  color: #999;
+  pointer-events: none;
 }
-
-/* 編輯區塊樣式 */
 div[contenteditable="true"] {
-outline: none;
-border: 1px solid #ccc;
-border-radius: 4px;
-padding: 10px;
-font-size: 14px;
-line-height: 1.5;
-background-color: #fff;
-transition: border-color 0.2s ease;
+  outline: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  background-color: #fff;
+  transition: border-color 0.2s ease;
 }
+div[contenteditable="true"]:focus { border-color: #0070f3; }
 
-/* 聚焦時邊框高亮 */
-div[contenteditable="true"]:focus {
-border-color: #0070f3;
-}
-
-/* === 移除紅底線錯誤標記 === */
-div[contenteditable="true"] mark {
-background-color: transparent !important;
-text-decoration: none !important;
-}
-
-/* === 保留預覽區的黃底錯誤提示 === */
+/* 預覽區黃底錯誤提示 */
 .preview mark {
-background-color: #fff5c4;
-padding: 0 2px;
-border-radius: 2px;
+  background-color: #fff5c4;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
-/* 錯誤訊息樣式 */
-.error {
-color: crimson;
-margin-top: 8px;
-font-size: 14px;
+/* 狀態訊息 */
+.error { color: crimson; margin-top: 8px; font-size: 14px; }
+.hint { color: #777; font-size: 12px; margin-left: 8px; }
+
+/* =========================
+   5) 全站 focus-visible 樣式
+   ========================= */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.35); /* 藍色焦點圈 */
+  border-radius: 12px;
 }
 
-/* 提示文字 */
-.hint {
-color: #777;
-font-size: 12px;
-margin-left: 8px;
+/* =========================
+   全域按鈕樣式（維持你先前定義）
+   ========================= */
+.btn {
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  padding: 10px 16px;
+  transition: all 0.2s ease;
+  position: relative;
 }
+.btn:active { transform: translateY(0.5px); }
+
+/* 主按鈕（藍底白字） */
+.btn-primary {
+  background: #1d4ed8;
+  color: #fff;
+  border: none;
+}
+.btn-primary:hover { background: #1e40af; }
+
+/* 次按鈕（白底藍字） */
+.btn-ghost {
+  background: #fff;
+  color: #1d4ed8;
+  border: 1px solid #1d4ed8;
+}
+.btn-ghost:hover { background: #eff6ff; }
+
+/* =========================
+   6) Skeleton 骨架（載入中）
+   ========================= */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f2f4f7 25%, #e9eef5 37%, #f2f4f7 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  border-radius: 8px;
+}
+.skeleton-line { height: 12px; margin: 8px 0; }
+.skeleton-rect { height: 120px; }
+.skeleton-pill { height: 28px; width: 88px; border-radius: 999px; }
+
+/* 減少動效偏好時停用動畫 */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* =========================
+   7) 通用徽章（Badge）
+   ========================= */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+}
+.badge .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+
+/* 色系（可依你的分類使用） */
+.badge-neutral { background: #f3f4f6; color: #111827; border-color: #e5e7eb; }
+.badge-info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.badge-success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.badge-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.badge-error   { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+
+/* =========================
+   8) 主題 Token（Light / Dark）
+   ========================= */
+/* 預設 Light */
+:root {
+  --bg: #f9fafb;
+  --text: #111827;
+  --sub: #6b7280;
+  --border: #e5e7eb;
+  --border-light: #f3f4f6;
+  --brand: #1d4ed8;
+  --brand-hover: #1e40af;
+  --white: #ffffff;
+}
+
+/* Dark 主題（未啟用；未來在 <html class="theme-dark"> 時套用） */
+.theme-dark {
+  --bg: #0b1220;
+  --text: #e5e7eb;
+  --sub: #cbd5e1;
+  --border: #1f2937;
+  --border-light: #111827;
+  --brand: #60a5fa;
+  --brand-hover: #93c5fd;
+  --white: #0f172a;
+  color-scheme: dark;
+}
+
+/* 供未來使用的 token class（不影響現有 inline style） */
+.bg-var   { background: var(--bg); }
+.text-var { color: var(--text); }
+.sub-var  { color: var(--sub); }
+.brand    { color: var(--brand); }
+.brand-bg { background: var(--brand); }
+
+/* Footer 連結 hover 強化（僅作用於 .site-footer 區塊） */
+.site-footer a {
+  color: #111827;
+  text-decoration: none;
+  transition: color .2s ease, text-decoration-color .2s ease;
+}
+.site-footer a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* === 導覽列 Logo 文字 === */
+.nav-logo {
+  font-size: 18px;       /* 比 16px 略大，穩重清晰 */
+  font-weight: 700;      /* 加粗 */
+  letter-spacing: 0.02em;
+  color: #111827;        /* 與正文同色 */
+}
+/* === 密碼欄位右側顯示/隱藏按鈕 === */
+.input-with-toggle {
+  position: relative;
+}
+.input-with-toggle input {
+  padding-right: 42px; /* 留右側空間給按鈕 */
+}
+.input-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 6px;
+  color: #6b7280; /* 次要文字色 */
+  transition: background-color .15s ease, color .15s ease;
+}
+.input-toggle-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.input-toggle-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29,78,216,.35);
+}
+/* ========== 你的既有全域樣式（保留） ========== */
+/* ...（保留你現有內容）... */
 

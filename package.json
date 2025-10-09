@@ -6,16 +6,18 @@
     "node": ">=20.10 <21"
   },
   "scripts": {
-  "dev": "next dev --turbopack",
-  "build": "next build --turbopack",
-  "start": "next start",
-  "lint": "eslint",
-  "test": "vitest",
-  "test:update": "vitest -u"
-},
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest",
+    "test:update": "vitest -u"
+  },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.56.1",
+    "docx": "^9.5.1",
+    "mammoth": "^1.11.0",
     "next": "15.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0"

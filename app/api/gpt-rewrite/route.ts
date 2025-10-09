@@ -27,7 +27,6 @@ export async function POST(req: Request) {
     const content = (text ?? '').toString().trim();
     if (!content) return NextResponse.json({ rewritten: '' });
 
-    // 使用 Chat Completions：單純回「改寫後的文本」，不帶解釋
     const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -41,13 +40,10 @@ export async function POST(req: Request) {
           {
             role: 'system',
             content:
-              'You are an editor. Rewrite the user\'s English text into a corrected, natural version. ' +
+              "You are an editor. Rewrite the user's English text into a corrected, natural version. " +
               'Return ONLY the rewritten text. Do not include quotes, brackets, labels, or explanations.',
           },
-          {
-            role: 'user',
-            content,
-          },
+          { role: 'user', content },
         ],
       }),
       timeout: OPENAI_TIMEOUT_MS,
@@ -64,6 +60,7 @@ export async function POST(req: Request) {
       data?.choices?.[0]?.text?.toString()?.trim?.() ||
       '';
 
+    // ⚠️ 這支路由不計數（只在 /api/check 成功時計數）
     return NextResponse.json({ rewritten });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'OpenAI error' }, { status: 500 });

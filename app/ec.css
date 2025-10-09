@@ -1,0 +1,206 @@
+/* app/ec.css — 純 CSS 版本，不含 Tailwind 指令 */
+/* 供 TopBar 的帳戶頭像按鈕與下拉選單使用，不會覆蓋你既有樣式 */
+
+.ec-avatar-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  height: 36px;            /* 原 h-9 */
+  width: 36px;             /* 原 w-9 */
+  border-radius: 9999px;   /* 圓形 */
+  background: #f5f5f5;     /* gray-100 近似 */
+  color: #374151;          /* gray-700 近似 */
+  border: 1px solid #e5e7eb; /* gray-200 */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  cursor: pointer;
+}
+.ec-avatar-btn:hover {
+  background: #e5e7eb;     /* gray-200 近似 */
+}
+
+.ec-menu {
+  position: absolute;
+  right: 0;
+  margin-top: 8px;
+  width: 224px;            /* 56 * 4 = w-56 近似 */
+  overflow: hidden;
+  border-radius: 12px;     /* rounded-xl */
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1),
+              0 4px 6px -2px rgba(0,0,0,0.05);
+  z-index: 50;
+}
+
+.ec-menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;      /* px-4 py-2.5 */
+  font-size: 14px;
+  line-height: 1.4;
+  color: #374151;          /* gray-700 */
+  background: #ffffff;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  text-align: left;
+}
+.ec-menu-item:hover {
+  background: #f9fafb;     /* gray-50 */
+}
+
+/* 額外小工具：不會影響你原本排版 */
+.ec-kbd {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d1d5db;   /* gray-300 */
+  background: #f9fafb;         /* gray-50 */
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  color: #374151;
+}
+
+.ec-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #e5e7eb;   /* gray-200 */
+  background: #f9fafb;         /* gray-50 */
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #4b5563;              /* gray-600 */
+}
+/* --- Layout container for consistent page width --- */
+.ec-container {
+  max-width: 72rem;  /* ≈ 1152px，常見的 6xl 寬度 */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;  /* 16px */
+  padding-right: 1rem; /* 16px */
+}
+/* --- HeroMock styles (純 CSS，無 Tailwind 指令) --- */
+.hm-frame {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.hm-topbar {
+  height: 36px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(180deg, #f9fafb, #f3f4f6);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+.hm-topbar .hm-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+}
+
+.hm-canvas {
+  position: relative;
+  background: linear-gradient(135deg, #eef2ff, #fdf2f8);
+}
+
+.hm-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);
+  background-size: 400% 100%;
+  animation: hm-loading 1.2s ease-in-out infinite;
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+@keyframes hm-loading {
+  0% { background-position: 100% 50% }
+  100% { background-position: 0% 50% }
+}
+
+.hm-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity .25s ease;
+  position: absolute;
+  inset: 0;
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+
+.hm-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 12px;
+  color: #374151; /* gray-700 */
+  background: rgba(255,255,255,0.8);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.hm-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  color: #374151;
+}
+.hm-fallback-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.hm-fallback-sub {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.hm-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+.hm-controls button {
+  appearance: none;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.hm-controls button:hover {
+  background: #eef2ff;
+}
+.hm-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hm-dot-mini {
+  width: 6px; height: 6px; border-radius: 9999px; background: #d1d5db;
+}
+.hm-dot-mini.is-active { background: #4f46e5; }
+
+/* --- Layout container (前面已加過，這裡保留一次，避免你漏掉) --- */
+.ec-container {
+  max-width: 72rem;
+  margin-left: auto; margin-right: auto;
+  padding-left: 1rem; padding-right: 1rem;
+}
