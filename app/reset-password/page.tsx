@@ -1,11 +1,15 @@
 // app/reset-password/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-export default function ResetPasswordPage() {
+// （可選）避免預先產生時嘗試 SSR 此頁
+export const dynamic = "force-dynamic";
+
+/** 內層：完全沿用你原本的 UI 與流程 */
+function ResetPasswordInner() {
   const supabase = createClientComponentClient();
   const sp = useSearchParams();
   const code = sp.get("code");
@@ -60,10 +64,7 @@ export default function ResetPasswordPage() {
     })();
   }, [code, supabase]);
 
-  const valid = useMemo(
-    () => pwd1.length >= 8 && pwd1 === pwd2,
-    [pwd1, pwd2]
-  );
+  const valid = useMemo(() => pwd1.length >= 8 && pwd1 === pwd2, [pwd1, pwd2]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,7 +90,11 @@ export default function ResetPasswordPage() {
   }
 
   if (exchanging) {
-    return <div style={{ minHeight: "100vh", background: palette.bg, padding: 16 }}>驗證連結中…</div>;
+    return (
+      <div style={{ minHeight: "100vh", background: palette.bg, padding: 16 }}>
+        驗證連結中…
+      </div>
+    );
   }
 
   if (!canReset) {
@@ -98,9 +103,29 @@ export default function ResetPasswordPage() {
         <div style={card}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>連結無效</div>
           <p style={{ color: palette.sub, fontSize: 14, marginBottom: 12 }}>
-            請回到<a href="/forgot-password" style={{ color: palette.brand, textDecoration: "none", fontWeight: 700 }}>忘記密碼</a>重新寄送重設連結。
+            請回到
+            <a
+              href="/forgot-password"
+              style={{ color: palette.brand, textDecoration: "none", fontWeight: 700 }}
+            >
+              忘記密碼
+            </a>
+            重新寄送重設連結。
           </p>
-          {err && <div style={{ color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", padding: 10, borderRadius: 10, fontSize: 12 }}>{err}</div>}
+          {err && (
+            <div
+              style={{
+                color: "#b91c1c",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                padding: 10,
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
+              {err}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -135,7 +160,9 @@ export default function ResetPasswordPage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>再次輸入新密碼</div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+              再次輸入新密碼
+            </div>
             <input
               type="password"
               value={pwd2}
@@ -172,21 +199,55 @@ export default function ResetPasswordPage() {
           </button>
 
           {ok && (
-            <div style={{ color: "#065f46", background: "#ecfdf5", border: "1px solid #a7f3d0", padding: 10, borderRadius: 10, fontSize: 12 }}>
+            <div
+              style={{
+                color: "#065f46",
+                background: "#ecfdf5",
+                border: "1px solid #a7f3d0",
+                padding: 10,
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
               {ok}
             </div>
           )}
           {err && (
-            <div style={{ color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", padding: 10, borderRadius: 10, fontSize: 12 }}>
+            <div
+              style={{
+                color: "#b91c1c",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                padding: 10,
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
               {err}
             </div>
           )}
         </form>
 
         <div style={{ marginTop: 10, fontSize: 13, color: palette.sub }}>
-          完成後可回到 <a href="/login" style={{ color: palette.brand, textDecoration: "none", fontWeight: 700 }}>登入頁</a>。
+          完成後可回到{" "}
+          <a
+            href="/login"
+            style={{ color: palette.brand, textDecoration: "none", fontWeight: 700 }}
+          >
+            登入頁
+          </a>
+          。
         </div>
       </div>
     </div>
+  );
+}
+
+/** 外層 Suspense：解 /reset-password 的 useSearchParams 建置報錯 */
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", padding: 16 }}>載入中…</div>}>
+      <ResetPasswordInner />
+    </Suspense>
   );
 }

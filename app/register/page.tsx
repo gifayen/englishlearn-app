@@ -1,11 +1,15 @@
 // app/register/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-export default function RegisterPage() {
+// 避免預先輸出造成的 hooks 執行時機問題
+export const dynamic = "force-dynamic";
+
+/** 你原本的頁面內容 → 搬進這個內層元件，不改動任何邏輯/UI */
+function RegisterInner() {
   const supabase = createClientComponentClient();
   const router = useRouter();
   const sp = useSearchParams();
@@ -234,5 +238,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** 外層：用 Suspense 包住（關鍵修正） */
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>載入中…</div>}>
+      <RegisterInner />
+    </Suspense>
   );
 }

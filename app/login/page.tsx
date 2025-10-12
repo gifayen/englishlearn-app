@@ -1,12 +1,28 @@
 // app/login/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { Suspense, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+// ✅ 避免預先輸出時執行 client hooks（更保險）
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>載入中…</div>}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+/**
+ * ✅ 你的原本內容原封不動搬進來
+ * - 保留 useSearchParams / useRouter / Supabase 等全部用法
+ * - UI、驗證、錯誤處理完全不改
+ */
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/essay-checker";
