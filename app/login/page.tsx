@@ -1,28 +1,12 @@
 // app/login/page.tsx
 "use client";
 
-import React, { Suspense, useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-// ✅ 避免預先輸出時執行 client hooks（更保險）
-export const dynamic = "force-dynamic";
-
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{ padding: 16 }}>載入中…</div>}>
-      <LoginInner />
-    </Suspense>
-  );
-}
-
-/**
- * ✅ 你的原本內容原封不動，僅加入：
- * - 登入成功後：router.replace(next); router.refresh();
- * - onAuthStateChange：若已登入立即導向
- */
-function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/essay-checker";
@@ -107,7 +91,9 @@ function LoginInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false); // 顯示/隱藏密碼
-  const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
+  const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>(
+    {}
+  );
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string>("");
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -129,20 +115,6 @@ function LoginInner() {
   const hasError = !!(emailError || passwordError);
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
-
-  // ✅ 新增：監聽 auth 狀態，若已登入就立即導向
-  useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        router.replace(next);
-        router.refresh();
-      }
-    });
-    return () => {
-      subscription.subscription?.unsubscribe?.();
-      // 兼容舊型別：如果上面沒有 subscription 屬性也不會報錯
-    };
-  }, [supabase, router, next]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -170,9 +142,7 @@ function LoginInner() {
         setGlobalError(msg);
         return;
       }
-      // ✅ 變更：登入成功立刻導向 + 刷新（取代原本的 router.push）
-      router.replace(next);
-      router.refresh();
+      router.push(next);
     } catch {
       setGlobalError("網路或伺服器異常，請稍後再試。");
     } finally {
@@ -239,13 +209,17 @@ function LoginInner() {
       </header>
 
       <main style={container}>
-        <section style={{ display: "grid", placeItems: "center", marginTop: 24 }}>
+        <section
+          style={{ display: "grid", placeItems: "center", marginTop: 24 }}
+        >
           <div style={{ ...card, width: "100%", maxWidth: 420 }}>
             <div style={{ ...cardBody }}>
               <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>
                 登入
               </div>
-              <div style={{ color: palette.sub, fontSize: 14, marginBottom: 12 }}>
+              <div
+                style={{ color: palette.sub, fontSize: 14, marginBottom: 12 }}
+              >
                 歡迎回來！請使用你的 Email 登入。
               </div>
 
@@ -292,7 +266,9 @@ function LoginInner() {
                       placeholder="至少 8 碼"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                      onBlur={() =>
+                        setTouched((t) => ({ ...t, password: true }))
+                      }
                       aria-invalid={!!passwordError}
                       aria-describedby="pwd-help pwd-error"
                     />
@@ -318,10 +294,12 @@ function LoginInner() {
                         color: palette.sub,
                       }}
                       onMouseEnter={(e) =>
-                        ((e.currentTarget as HTMLButtonElement).style.background = "#f3f4f6")
+                        ((e.currentTarget as HTMLButtonElement).style.background =
+                          "#f3f4f6")
                       }
                       onMouseLeave={(e) =>
-                        ((e.currentTarget as HTMLButtonElement).style.background = "transparent")
+                        ((e.currentTarget as HTMLButtonElement).style.background =
+                          "transparent")
                       }
                     >
                       {showPwd ? "🙈" : "👁️"}
@@ -383,7 +361,9 @@ function LoginInner() {
                 <button type="button" style={btnGhost}>
                   使用 Google 登入（佔位）
                 </button>
-                <div style={{ fontSize: 13, color: palette.sub, textAlign: "center" }}>
+                <div
+                  style={{ fontSize: 13, color: palette.sub, textAlign: "center" }}
+                >
                   還沒有帳號？
                   <Link
                     href={{ pathname: "/register", query: { next } }}
