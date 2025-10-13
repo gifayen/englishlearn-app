@@ -3,56 +3,53 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 
+function normalizePath(p: string) {
+  // 小寫 + 去除結尾斜線（但保留根目錄 "/"）
+  const low = p.toLowerCase()
+  if (low === '/') return '/'
+  return low.endsWith('/') ? low.slice(0, -1) : low
+}
+
 export async function middleware(req: NextRequest) {
   const url = new URL(req.url)
-  const pathname = url.pathname.toLowerCase()
+  const pathname = normalizePath(url.pathname)
 
-  // 這些頁面不需要登入即可瀏覽
+  // 不需登入即可瀏覽
   const publicRoutes = new Set<string>([
-    '/',                // 首頁
-    '/login',           // 登入
-    '/register',        // 註冊
-    '/pricing',         // 定價頁
-    '/forgot-password', // 忘記密碼
-    '/reset-password',  // 重設密碼（信件回跳）
-    '/gpt-demo',
-    '/feedback',
+    '/', '/login', '/register', '/pricing',
+    '/forgot-password', '/reset-password',
+    '/gpt-demo', '/feedback',
   ])
 
-  // 這些是「認證相關頁」：若已登入，應該直接帶去 next 或預設頁
+  // 已登入時應導走的認證相關頁
   const authPages = new Set<string>([
-    '/login',
-    '/register',
-    '/forgot-password',
-    '/reset-password',
+    '/login', '/register', '/forgot-password', '/reset-password',
   ])
 
-  // 先建立可回寫 Cookie 的回應物件
   const res = NextResponse.next()
 
-  // 讀取 Supabase Session（server 端）
+  // 讀取 session（會自動同步 cookie）
   const supabase = createMiddlewareClient({ req, res })
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  const { data: { session } } = await supabase.auth.getSession()
 
-  // ✅ 如果已登入，且正在造訪認證相關頁（/login /register ...）
-  //    → 直接導去 next（若提供）或預設的 /essay-checker
+  // 已登入又來到認證頁 → 帶去 next 或預設頁
   if (session && authPages.has(pathname)) {
-    const next = url.searchParams.get('next') || '/essay-checker'
-    const redirectUrl = new URL(next, url.origin)
-    return NextResponse.redirect(redirectUrl)
+    const rawNext = url.searchParams.get('next') || '/essay-checker'
+    // 只允許站內路徑，避免外部開放轉址
+    const safeNext = rawNext.startsWith('/') ? rawNext : '/essay-checker'
+    return NextResponse.redirect(new URL(safeNext, url.origin))
   }
 
-  // ✅ 公開頁一律放行（不管有沒有登入）
+  // 公開頁 → 放行
   if (publicRoutes.has(pathname)) {
     return res
   }
 
-  // ✅ 其他頁面：需要登入；若沒有 session → 導回 /login?next=<原頁>
+  // 其餘需登入；無 session → 回 /login?next=<原頁與查詢>
   if (!session) {
     const redirectUrl = new URL('/login', url.origin)
-    redirectUrl.searchParams.set('next', pathname + url.search)
+    // 保留原本的 path 與 query
+    redirectUrl.searchParams.set('next', url.pathname + url.search)
     return NextResponse.redirect(redirectUrl)
   }
 
