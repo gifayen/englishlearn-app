@@ -131,6 +131,7 @@ function LoginInner() {
     {}
   );
   const [submitting, setSubmitting] = useState(false);
+  const [submittingGoogle, setSubmittingGoogle] = useState(false);
   const [globalError, setGlobalError] = useState<string>("");
   const formRef = useRef<HTMLFormElement | null>(null);
 
@@ -225,6 +226,28 @@ function LoginInner() {
       setGlobalError("網路或伺服器異常，請稍後再試。");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // ✅ Google 登入
+  async function onGoogleLogin() {
+    if (submittingGoogle) return;
+    setGlobalError("");
+    setSubmittingGoogle(true);
+    try {
+      const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(
+        resolvedNext
+      )}`;
+      // 這行會觸發 Google 授權並重導，正常情況下不會回到這裡
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo },
+      });
+      if (error) throw error;
+      // 如果瀏覽器阻擋彈窗或有例外才會走到這裡
+    } catch (e) {
+      setGlobalError("Google 登入啟動失敗，請稍後再試或改用 Email/密碼。");
+      setSubmittingGoogle(false);
     }
   }
 
@@ -364,7 +387,7 @@ function LoginInner() {
                         top: "50%",
                         transform: "translateY(-50%)",
                         border: "none",
-                        background: "transparent", // 修正為有效 CSS 值
+                        background: "transparent",
                         cursor: "pointer",
                         fontSize: 16,
                         lineHeight: 1,
@@ -440,9 +463,22 @@ function LoginInner() {
               )}
 
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                <button type="button" style={btnGhost}>
-                  使用 Google 登入（佔位）
+                {/* ✅ 這顆改成真的 Google 登入 */}
+                <button
+                  type="button"
+                  style={{
+                    ...btnGhost,
+                    opacity: submittingGoogle ? 0.7 : 1,
+                    cursor: submittingGoogle ? "not-allowed" : "pointer",
+                  }}
+                  disabled={submittingGoogle}
+                  onClick={onGoogleLogin}
+                  aria-label="使用 Google 登入"
+                  title="使用 Google 登入"
+                >
+                  {submittingGoogle ? "前往 Google…" : "使用 Google 登入"}
                 </button>
+
                 <div
                   style={{ fontSize: 13, color: palette.sub, textAlign: "center" }}
                 >
