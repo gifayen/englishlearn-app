@@ -14,6 +14,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 // ✅ 避免預先輸出時執行 client hooks（更保險）
 export const dynamic = "force-dynamic";
+// ✅ 重要：避免任何快取影響登入後導向
+export const revalidate = 0;
 
 export default function LoginPage() {
   return (
@@ -24,10 +26,12 @@ export default function LoginPage() {
 }
 
 /**
- * ✅ 你的原本內容原封不動，僅加入：
- * - hydration 修正：mounted/resolvedNext（用戶端才讀 useSearchParams）
- * - 登入成功後：router.replace(resolvedNext); router.refresh();
- * - onAuthStateChange：若已登入立即導向
+ * 最小變更：
+ * - 保留你原本所有 UI 與驗證
+ * - 新增 mounted/resolvedNext（你已經有）
+ * - 新增：掛載後先 getSession()，若已登入立即導向
+ * - 新增：signIn 成功後 await getSession() 再 replace + refresh
+ * - 保留：onAuthStateChange 監聽立即導向
  */
 function LoginInner() {
   const router = useRouter();
@@ -148,7 +152,22 @@ function LoginInner() {
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
 
-  // ✅ 新增：監聽 auth 狀態，若已登入就立即導向
+  // ✅ 新增 1：掛載後主動讀 session（若已登入，例如剛完成登入），立即導向
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!cancelled && data.session) {
+        router.replace(resolvedNext);
+        router.refresh();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, router, resolvedNext]);
+
+  // ✅ 已有：監聽 auth 狀態；拿到 session 立即導向
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
@@ -193,7 +212,8 @@ function LoginInner() {
         setGlobalError(msg);
         return;
       }
-      // ✅ 變更：登入成功立刻導向 + 刷新（取代原本的 router.push）
+      // ✅ 新增 2：signIn 成功後等 session 可讀，再跳轉
+      await supabase.auth.getSession();
       router.replace(resolvedNext);
       router.refresh();
     } catch {
@@ -356,7 +376,7 @@ function LoginInner() {
                       }
                       onMouseLeave={(e) =>
                         ((e.currentTarget as HTMLButtonElement).style.background =
-                          "transparent")
+                          "透明")
                       }
                     >
                       {showPwd ? "🙈" : "👁️"}
