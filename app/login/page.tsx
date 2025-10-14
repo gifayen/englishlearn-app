@@ -12,9 +12,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-// ✅ 避免預先輸出時執行 client hooks（更保險）
 export const dynamic = "force-dynamic";
-// ✅ 重要：避免任何快取影響登入後導向
 export const revalidate = 0;
 
 export default function LoginPage() {
@@ -25,28 +23,31 @@ export default function LoginPage() {
   );
 }
 
-/**
- * 最小變更：
- * - 保留你原本所有 UI 與驗證
- * - 新增 mounted/resolvedNext（你已經有）
- * - 新增：掛載後先 getSession()，若已登入立即導向
- * - 新增：signIn 成功後 await getSession() 再 replace + refresh
- * - 保留：onAuthStateChange 監聽立即導向
- */
 function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
-  // ✅ Hydration 安全處理：等用戶端掛載再讀取 searchParams
+  // ✅ 用戶端才讀 searchParams，避免 hydration 差異
   const [mounted, setMounted] = useState(false);
   const [resolvedNext, setResolvedNext] = useState<string>("/essay-checker");
-
   useEffect(() => {
     setMounted(true);
     const n = searchParams.get("next") || "/essay-checker";
     setResolvedNext(n);
   }, [searchParams]);
+
+  // 🔸 新增：把 session 同步到伺服器（寫入 cookie）
+  async function syncServerSession(session: any) {
+    try {
+      await fetch("/auth/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ event: "SIGNED_IN", session }),
+      });
+    } catch {}
+  }
 
   const palette = {
     bg: "#f9fafb",
@@ -126,7 +127,7 @@ function LoginInner() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd] = useState(false); // 顯示/隱藏密碼
+  const [showPwd, setShowPwd] = useState(false);
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>(
     {}
   );
@@ -152,33 +153,18 @@ function LoginInner() {
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
 
-  // ✅ 新增 1：掛載後主動讀 session（若已登入，例如剛完成登入），立即導向
+  // 監聽 auth 狀態：拿到 session → 先同步伺服器 cookie → 再導向
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!cancelled && data.session) {
-        router.replace(resolvedNext);
-        router.refresh();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, router, resolvedNext]);
-
-  // ✅ 已有：監聽 auth 狀態；拿到 session 立即導向
-  useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
+        await syncServerSession(session);
         router.replace(resolvedNext);
         router.refresh();
       }
     });
-    // 兼容不同 SDK 版本的回傳型別
     return () => {
       try {
-        // @ts-ignore
+        // @ts-ignore 兼容不同 SDK 型別
         data?.subscription?.unsubscribe?.();
         // @ts-ignore
         data?.unsubscribe?.();
@@ -212,8 +198,12 @@ function LoginInner() {
         setGlobalError(msg);
         return;
       }
-      // ✅ 新增 2：signIn 成功後等 session 可讀，再跳轉
-      await supabase.auth.getSession();
+
+      // 先取 session，再同步到伺服器 cookie，最後導向
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        await syncServerSession(data.session);
+      }
       router.replace(resolvedNext);
       router.refresh();
     } catch {
@@ -223,16 +213,13 @@ function LoginInner() {
     }
   }
 
-  // ✅ 首屏先顯示簡單載入（避免 SSR/CSR 初值不一致造成 hydration 警告）
   if (!mounted) {
     return <div style={{ padding: 16 }}>載入中…</div>;
   }
 
   return (
-    <div
-      suppressHydrationWarning
-      style={{ background: palette.bg, minHeight: "100vh" }}
-    >
+    <div suppressHydrationWarning style={{ background: palette.bg, minHeight: "100vh" }}>
+      {/* —— 以下你的 UI 完整保留 —— */}
       <header
         style={{
           borderBottom: `1px solid ${palette.borderLight}`,
@@ -376,7 +363,7 @@ function LoginInner() {
                       }
                       onMouseLeave={(e) =>
                         ((e.currentTarget as HTMLButtonElement).style.background =
-                          "透明")
+                          "transparent")
                       }
                     >
                       {showPwd ? "🙈" : "👁️"}
@@ -388,7 +375,6 @@ function LoginInner() {
                       <div id="pwd-help" style={helpText}>
                         建議混合大小寫與數字，提升安全性。
                       </div>
-                      {/* ✅ 忘記密碼連結（保留） */}
                       <div style={{ marginTop: 6 }}>
                         <Link
                           href="/forgot-password"
