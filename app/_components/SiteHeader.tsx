@@ -502,11 +502,20 @@ export default function SiteHeader() {
     if (busyLogout) return;
     setBusyLogout(true);
     try {
-      setUser(null); // 樂觀
+      setUser(null); // 樂觀更新：先把 UI 視為已登出
+      // 1) 清前端 session
       await supabase.auth.signOut();
+      // 2) 同步清除伺服器 Cookie（和登入對稱）
+      await fetch('/api/auth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ event: 'SIGNED_OUT' }),
+      });
     } finally {
       setBusyLogout(false);
-      router.push('/');
+      // 3) 導回登入頁並刷新，避免殘留狀態
+      router.replace('/login');
       router.refresh();
     }
   }
