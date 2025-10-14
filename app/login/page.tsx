@@ -1,16 +1,48 @@
 // app/login/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+// ✅ 避免預先輸出時執行 client hooks（更保險）
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>載入中…</div>}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+/**
+ * ✅ 你的原本內容原封不動，僅加入：
+ * - hydration 修正：mounted/resolvedNext（用戶端才讀 useSearchParams）
+ * - 登入成功後：router.replace(resolvedNext); router.refresh();
+ * - onAuthStateChange：若已登入立即導向
+ */
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/essay-checker";
   const supabase = createClientComponentClient();
+
+  // ✅ Hydration 安全處理：等用戶端掛載再讀取 searchParams
+  const [mounted, setMounted] = useState(false);
+  const [resolvedNext, setResolvedNext] = useState<string>("/essay-checker");
+
+  useEffect(() => {
+    setMounted(true);
+    const n = searchParams.get("next") || "/essay-checker";
+    setResolvedNext(n);
+  }, [searchParams]);
 
   const palette = {
     bg: "#f9fafb",
@@ -116,6 +148,25 @@ export default function LoginPage() {
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
 
+  // ✅ 新增：監聽 auth 狀態，若已登入就立即導向
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        router.replace(resolvedNext);
+        router.refresh();
+      }
+    });
+    // 兼容不同 SDK 版本的回傳型別
+    return () => {
+      try {
+        // @ts-ignore
+        data?.subscription?.unsubscribe?.();
+        // @ts-ignore
+        data?.unsubscribe?.();
+      } catch {}
+    };
+  }, [supabase, router, resolvedNext]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setGlobalError("");
@@ -142,7 +193,9 @@ export default function LoginPage() {
         setGlobalError(msg);
         return;
       }
-      router.push(next);
+      // ✅ 變更：登入成功立刻導向 + 刷新（取代原本的 router.push）
+      router.replace(resolvedNext);
+      router.refresh();
     } catch {
       setGlobalError("網路或伺服器異常，請稍後再試。");
     } finally {
@@ -150,8 +203,16 @@ export default function LoginPage() {
     }
   }
 
+  // ✅ 首屏先顯示簡單載入（避免 SSR/CSR 初值不一致造成 hydration 警告）
+  if (!mounted) {
+    return <div style={{ padding: 16 }}>載入中…</div>;
+  }
+
   return (
-    <div style={{ background: palette.bg, minHeight: "100vh" }}>
+    <div
+      suppressHydrationWarning
+      style={{ background: palette.bg, minHeight: "100vh" }}
+    >
       <header
         style={{
           borderBottom: `1px solid ${palette.borderLight}`,
@@ -193,7 +254,7 @@ export default function LoginPage() {
           </Link>
           <nav style={{ display: "flex", gap: 12 }}>
             <Link
-              href={{ pathname: "/register", query: { next } }}
+              href={{ pathname: "/register", query: { next: resolvedNext } }}
               style={{ color: palette.text, fontSize: 14, textDecoration: "none" }}
             >
               註冊
@@ -209,17 +270,13 @@ export default function LoginPage() {
       </header>
 
       <main style={container}>
-        <section
-          style={{ display: "grid", placeItems: "center", marginTop: 24 }}
-        >
+        <section style={{ display: "grid", placeItems: "center", marginTop: 24 }}>
           <div style={{ ...card, width: "100%", maxWidth: 420 }}>
             <div style={{ ...cardBody }}>
               <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>
                 登入
               </div>
-              <div
-                style={{ color: palette.sub, fontSize: 14, marginBottom: 12 }}
-              >
+              <div style={{ color: palette.sub, fontSize: 14, marginBottom: 12 }}>
                 歡迎回來！請使用你的 Email 登入。
               </div>
 
@@ -311,11 +368,15 @@ export default function LoginPage() {
                       <div id="pwd-help" style={helpText}>
                         建議混合大小寫與數字，提升安全性。
                       </div>
-                      {/* ✅ 新增：忘記密碼連結（最小變更） */}
+                      {/* ✅ 忘記密碼連結（保留） */}
                       <div style={{ marginTop: 6 }}>
                         <Link
                           href="/forgot-password"
-                          style={{ color: palette.brand, textDecoration: "none", fontWeight: 700 }}
+                          style={{
+                            color: palette.brand,
+                            textDecoration: "none",
+                            fontWeight: 700,
+                          }}
                         >
                           忘記密碼？
                         </Link>
@@ -366,7 +427,7 @@ export default function LoginPage() {
                 >
                   還沒有帳號？
                   <Link
-                    href={{ pathname: "/register", query: { next } }}
+                    href={{ pathname: "/register", query: { next: resolvedNext } }}
                     style={{ color: palette.brand, textDecoration: "none" }}
                   >
                     建立帳號
