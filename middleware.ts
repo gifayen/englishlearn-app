@@ -13,15 +13,16 @@ export async function middleware(req: NextRequest) {
   const url = new URL(req.url)
   const pathname = normalizePath(url.pathname)
 
-  // 不需登入即可瀏覽（包含 /auth/callback）
+  // 不需登入即可瀏覽（包含 /auth/callback 與 /api/auth/callback）
   const publicRoutes = new Set<string>([
     '/', '/login', '/register', '/pricing',
     '/forgot-password', '/reset-password',
     '/gpt-demo', '/feedback',
-    '/auth/callback', // ← 這行很關鍵
+    '/auth/callback',         // 保留舊路由（若仍存在）
+    '/api/auth/callback',     // ✅ 新增：API 版本的同步端點
   ])
 
-  // 若是公開頁，**直接放行**（先於任何 session 讀取）
+  // 先放行公開頁，避免多餘 I/O 或被誤攔
   if (publicRoutes.has(pathname)) {
     return NextResponse.next()
   }
@@ -31,32 +32,33 @@ export async function middleware(req: NextRequest) {
     '/login', '/register', '/forgot-password', '/reset-password',
   ])
 
-  // 建立可寫 cookie 的回應物件
+  // 建立可寫 Cookie 的回應物件
   const res = NextResponse.next()
 
-  // 讀取 session（會自動同步 cookie）
+  // 讀取 session（會自動處理 Supabase 的 cookies）
   const supabase = createMiddlewareClient({ req, res })
   const { data: { session } } = await supabase.auth.getSession()
 
   // 已登入又來到認證頁 → 帶去 next 或預設頁
   if (session && authPages.has(pathname)) {
     const rawNext = url.searchParams.get('next') || '/essay-checker'
+    // 僅允許站內路徑，避免開放轉址
     const safeNext = rawNext.startsWith('/') ? rawNext : '/essay-checker'
     return NextResponse.redirect(new URL(safeNext, url.origin))
   }
 
-  // 其餘需登入；無 session → 回 /login?next=<原頁與查詢>
+  // 其餘頁面需登入；無 session → 回 /login?next=<原頁與查詢>
   if (!session) {
     const redirectUrl = new URL('/login', url.origin)
     redirectUrl.searchParams.set('next', url.pathname + url.search)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // 已登入 & 非公開頁 → 放行（帶上 supabase cookies）
+  // 已登入 & 非公開頁 → 放行（攜帶已更新的 cookies）
   return res
 }
 
-// 避開 _next 與靜態資產
+// 避開 _next 與各類靜態資產
 export const config = {
   matcher: ['/((?!_next/|.*\\.(?:ico|png|jpg|jpeg|svg|gif|webp|css|js|map)$).*)'],
 }

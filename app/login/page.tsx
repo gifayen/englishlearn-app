@@ -40,7 +40,7 @@ function LoginInner() {
   // 🔸 把 session 同步到伺服器（寫入 cookie）
   async function syncServerSession(session: any) {
     try {
-      await fetch("/auth/callback", {
+      await fetch("/api/auth/callback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -153,7 +153,7 @@ function LoginInner() {
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
 
-  // ✅ 新增：頁面掛載即檢查是否已有 session（例如剛完成登入）
+  // ✅ 掛載即檢查是否已有 session（例如剛完成登入）
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -365,7 +365,7 @@ function LoginInner() {
                         top: "50%",
                         transform: "translateY(-50%)",
                         border: "none",
-                        background: "透明",
+                        background: "transparent", // 修正為有效 CSS 值
                         cursor: "pointer",
                         fontSize: 16,
                         lineHeight: 1,
