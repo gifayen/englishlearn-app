@@ -14,11 +14,12 @@ export async function middleware(req: NextRequest) {
   const url = new URL(req.url)
   const pathname = normalizePath(url.pathname)
 
-  // 不需登入即可瀏覽
+  // 不需登入即可瀏覽（✅ 加入 /auth/callback 讓同步端點通行）
   const publicRoutes = new Set<string>([
     '/', '/login', '/register', '/pricing',
     '/forgot-password', '/reset-password',
     '/gpt-demo', '/feedback',
+    '/auth/callback', // ← 新增
   ])
 
   // 已登入時應導走的認證相關頁
@@ -40,7 +41,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(safeNext, url.origin))
   }
 
-  // 公開頁 → 放行
+  // 公開頁 → 放行（包含 /auth/callback）
   if (publicRoutes.has(pathname)) {
     return res
   }

@@ -37,7 +37,7 @@ function LoginInner() {
     setResolvedNext(n);
   }, [searchParams]);
 
-  // 🔸 新增：把 session 同步到伺服器（寫入 cookie）
+  // 🔸 把 session 同步到伺服器（寫入 cookie）
   async function syncServerSession(session: any) {
     try {
       await fetch("/auth/callback", {
@@ -152,6 +152,22 @@ function LoginInner() {
   const hasError = !!(emailError || passwordError);
   const inputStyle = (error: string): React.CSSProperties =>
     error ? { ...baseInput, border: `1px solid ${palette.danger}` } : baseInput;
+
+  // ✅ 新增：頁面掛載即檢查是否已有 session（例如剛完成登入）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!cancelled && data.session) {
+        await syncServerSession(data.session);
+        router.replace(resolvedNext);
+        router.refresh();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, router, resolvedNext]);
 
   // 監聽 auth 狀態：拿到 session → 先同步伺服器 cookie → 再導向
   useEffect(() => {
@@ -349,7 +365,7 @@ function LoginInner() {
                         top: "50%",
                         transform: "translateY(-50%)",
                         border: "none",
-                        background: "transparent",
+                        background: "透明",
                         cursor: "pointer",
                         fontSize: 16,
                         lineHeight: 1,
