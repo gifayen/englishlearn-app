@@ -1,18 +1,18 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+/* ===================== 型別（與 API 對齊） ===================== */
 export type UnitData = {
   title: string;
   dialogues?: Record<string, { speaker: string; en: string; zh?: string }[]>;
-  /** 支援字串或陣列（為了分段朗讀/整段呈現） */
-  reading?: { title?: string; en: string | string[]; zh?: string | string[] };
-  exercise?: { title?: string; en: string | string[]; zh?: string | string[] };
+  reading?: { title?: string; en: string; zh?: string };
+  exercise?: { title?: string; en: string; zh?: string };
   vocabulary?: {
     word: string;
     translation?: string;
     pos?: string;
-    kk?: string | null;
+    kk?: string;
     examples?: { en: string; zh?: string }[];
   }[];
   images?: {
@@ -21,1060 +21,637 @@ export type UnitData = {
     reading?: string[];
   };
 };
+type VocabItem = NonNullable<UnitData['vocabulary']>[number];
+type WordbookItem = { word: string; translation?: string; pos?: string; kk?: string };
 
-type ViewMode = 'sentence' | 'full';
-type Props = { data: UnitData };
+/* ===================== 小工具 ===================== */
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const splitSentences = (p: string) =>
+  p.split(/(?<=[.!?])\s+(?=[A-Z0-9"“(])/).map(s => s.trim()).filter(Boolean) || [p];
 
-const palette = {
-  border: '#e5e7eb',
-  borderSoft: '#f3f4f6',
-  text: '#111827',
-  sub: '#6b7280',
-  cardBg: '#fff',
-  pillBg: '#fff',
-  accent: '#60a5fa',
-};
-
-function pillLink(): React.CSSProperties {
-  return {
-    display: 'inline-block',
-    padding: '8px 12px',
-    border: `1px solid ${palette.border}`,
-    borderRadius: 9999,
-    background: palette.pillBg,
-    textDecoration: 'none',
-    color: palette.text,
-    fontSize: 16,
-    lineHeight: 1,
-    fontWeight: 600,
-  };
-}
-function pillBtn(): React.CSSProperties {
-  return { ...pillLink(), cursor: 'pointer', userSelect: 'none' };
-}
-function segBtn(active: boolean): React.CSSProperties {
-  return {
-    padding: '8px 10px',
-    border: `1px solid ${active ? palette.accent : palette.border}`,
-    color: active ? '#0b5ad7' : palette.text,
-    background: active ? '#eff6ff' : '#fff',
-    borderRadius: 9999,
-    fontWeight: 700,
-    cursor: 'pointer',
-  };
-}
-function card(): React.CSSProperties {
-  return {
-    background: palette.cardBg,
-    border: `1px solid ${palette.border}`,
-    borderRadius: 12,
-    overflow: 'visible',
-  };
-}
-function cardHeader(): React.CSSProperties {
-  return {
-    padding: '12px 14px',
-    fontWeight: 800,
-    borderBottom: `1px solid ${palette.borderSoft}`,
-    background: '#f9fafb',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontSize: 20,
-  };
-}
-function h2(): React.CSSProperties {
-  return { fontSize: 30, fontWeight: 900, margin: '4px 0' };
-}
-
-/* ---------------- TTS ---------------- */
-function stopSpeak() {
-  if (typeof window === 'undefined') return;
-  try { window.speechSynthesis.cancel(); } catch {}
-}
-function speakOnce(text: string, rate: number) {
-  if (typeof window === 'undefined') return;
+/* ===================== TTS ===================== */
+function speak(text: string, rate: number) {
   try {
-    stopSpeak();
+    if (!text) return;
+    window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'en-US';
-    u.rate = rate; // 0.8–1.2 推薦 0.9
+    u.rate = clamp(rate, 0.6, 1.4);
+    const voices = window.speechSynthesis.getVoices();
+    u.voice =
+      voices.find(v => /en[-_]US/i.test(v.lang) && /female/i.test(v.name)) ||
+      voices.find(v => /en[-_]US/i.test(v.lang)) ||
+      voices[0] || null;
     window.speechSynthesis.speak(u);
   } catch {}
 }
-function speakQueue(texts: string[], rate: number) {
-  if (typeof window === 'undefined') return;
-  try {
-    stopSpeak();
-    let i = 0;
-    const next = () => {
-      if (i >= texts.length) return;
-      const t = (texts[i] || '').trim();
-      i++;
-      if (!t) return next();
-      const u = new SpeechSynthesisUtterance(t);
-      u.lang = 'en-US';
-      u.rate = rate;
-      u.onend = () => next();
-      window.speechSynthesis.speak(u);
-    };
-    next();
-  } catch {}
+function stopSpeak() {
+  try { window.speechSynthesis.cancel(); } catch {}
 }
 
-/* --------------- 文本分段/分句 --------------- */
-function normalizeParas(en?: string | string[]): string[] {
-  if (!en) return [];
-  return Array.isArray(en) ? en : [en];
-}
-/** 簡易英文分句 */
-function splitIntoSentences(paragraph: string): string[] {
-  const parts = paragraph
-    .split(/(?<=[.?!])\s+(?=[A-Z"'\(\[])/g)
-    .map(s => s.trim())
-    .filter(Boolean);
-  return parts.length ? parts : [paragraph.trim()];
-}
+/* ===================== 生字本（localStorage） ===================== */
+const WB_KEY = 'ec_wordbook';
+const loadWB = (): WordbookItem[] => {
+  try { return JSON.parse(localStorage.getItem(WB_KEY) || '[]'); } catch { return []; }
+};
+const saveWB = (items: WordbookItem[]) => localStorage.setItem(WB_KEY, JSON.stringify(items));
 
-/* --------------- 字卡（Hover） --------------- */
-function toKeyToken(raw: string) { return (raw || '').toLowerCase().trim(); }
-function wholeTokenRegex(safe: string) { return new RegExp(`(?<![A-Za-z0-9])${safe}(?![A-Za-z0-9])`, 'gi'); }
-
-function HoverToken({
-  text,
-  vocab,
-  rate,
+/* ===================== Hover 卡片（可停留） ===================== */
+type HoverData = { word: string; item: VocabItem; x: number; y: number };
+function HoverCard({
+  data, onSafeHide, rate, lock, setLock,
 }: {
-  text: string;
-  vocab?: NonNullable<UnitData['vocabulary']>[number];
+  data: HoverData | null;
+  onSafeHide: () => void;
   rate: number;
+  lock: boolean;
+  setLock: (v: boolean) => void;
 }) {
-  const [show, setShow] = useState(false);
-  const [place, setPlace] = useState<'above' | 'below'>('below');
-  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
 
   useEffect(() => {
-    if (!show || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const viewportH = window.innerHeight || document.documentElement.clientHeight;
-    // 估計高度：標題 + 例句（每句 ~ 36px）
-    const exLen = vocab?.examples?.length ?? 0;
-    const estimatedHeight = Math.min(420, 60 + exLen * 36);
-    const spaceBelow = viewportH - rect.bottom;
-    setPlace(spaceBelow < estimatedHeight + 16 ? 'above' : 'below');
-  }, [show, vocab?.examples?.length]);
-
-  return (
-    <span
-      ref={wrapRef}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-      style={{ position: 'relative', paddingInline: 1 }}
-    >
-      <span style={{ borderBottom: `2px dotted ${palette.accent}`, cursor: 'help' }}>{text}</span>
-      {show && (
-        <div
-          role="tooltip"
-          onMouseEnter={() => setShow(true)}
-          onMouseLeave={() => setShow(false)}
-          style={{
-            position: 'absolute',
-            left: 0,
-            zIndex: 50,
-            minWidth: 280,
-            maxWidth: 420,
-            background: '#fff',
-            border: `1px solid ${palette.border}`,
-            borderRadius: 10,
-            boxShadow: '0 8px 20px rgba(0,0,0,.12)',
-            padding: '10px 12px',
-            fontSize: 13,
-            color: palette.text,
-            lineHeight: 1.55,
-            whiteSpace: 'pre-wrap',
-            top: place === 'below' ? '1.6em' : undefined,
-            bottom: place === 'above' ? '1.6em' : undefined,
-          }}
-        >
-          {/* 標題列：單字 + 詞性 + KK + 單字🔊 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <strong>
-              {vocab?.word ? `【${vocab.word}】` : `【${text}】`}
-              {vocab?.pos ? ` · ${vocab.pos}` : ''}
-              {vocab?.kk ? ` · ${vocab.kk}` : ''}
-            </strong>
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); speakOnce(vocab?.word || text, rate); }}
-              aria-label="發音"
-              title="發音"
-              style={{
-                marginLeft: 'auto',
-                border: `1px solid ${palette.border}`,
-                background: '#fff',
-                borderRadius: 8,
-                padding: '4px 6px',
-                cursor: 'pointer',
-              }}
-            >
-              🔊
-            </button>
-          </div>
-
-          {/* 意思 */}
-          {vocab?.translation ? (
-            <div style={{ color: palette.sub, marginBottom: 6 }}>意思：{vocab.translation}</div>
-          ) : null}
-
-          {/* 例句（每句都有 🔊） */}
-          {vocab?.examples?.length ? (
-            <div style={{ display: 'grid', gap: 6 }}>
-              {vocab.examples.slice(0, 4).map((ex, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div>{ex.en}</div>
-                    {ex.zh ? <div style={{ color: palette.sub }}>{ex.zh}</div> : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); speakOnce(ex.en, rate); }}
-                    aria-label="朗讀例句"
-                    title="朗讀例句"
-                    style={{
-                      border: `1px solid ${palette.border}`,
-                      background: '#fff',
-                      borderRadius: 8,
-                      padding: '2px 6px',
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      alignSelf: 'center',
-                    }}
-                  >
-                    🔊
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      )}
-    </span>
-  );
-}
-
-/** 在「整段」模式中，把段落文字加上詞彙 hover 字卡（含例句🔊） */
-function decorateInline(
-  text: string,
-  dict: Map<string, UnitData['vocabulary'][number]>,
-  rate: number
-) {
-  if (!text) return text;
-  const keys = Array.from(dict.keys()).sort((a, b) => b.length - a.length);
-  const matches: { start: number; end: number; text: string; info: any }[] = [];
-
-  for (const key of keys) {
-    const safe = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = wholeTokenRegex(safe);
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text))) {
-      matches.push({ start: m.index, end: m.index + m[0].length, text: m[0], info: dict.get(key) });
+    function place() {
+      if (!data) return;
+      const CARD_W = 320, PAD = 8;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      let left = clamp(data.x + 12, 8, vw - CARD_W - PAD);
+      let top = clamp(data.y + 12, 8, vh - 200 - PAD);
+      setPos({ left, top });
+      requestAnimationFrame(() => {
+        const h = ref.current?.offsetHeight ?? 180;
+        setPos(p => ({ left: p.left, top: clamp(p.top, 8, vh - h - PAD) }));
+      });
     }
-  }
+    place();
+    const onScroll = () => place();
+    const onResize = () => place();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize, true);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize, true);
+    };
+  }, [data]);
 
-  matches.sort((a, b) => a.start - b.start || a.end - b.end);
-  const nonOverlap: typeof matches = [];
-  let lastEnd = -1;
-  for (const m of matches) {
-    if (m.start >= lastEnd) { nonOverlap.push(m); lastEnd = m.end; }
-  }
-
-  const nodes: React.ReactNode[] = [];
-  let cursor = 0;
-  for (const m of nonOverlap) {
-    if (m.start > cursor) nodes.push(text.slice(cursor, m.start));
-    const v = m.info;
-    nodes.push(
-      <HoverToken
-        key={`${m.start}-${m.end}-${m.text}`}
-        text={m.text}
-        vocab={v}
-        rate={rate}
-      />
-    );
-    cursor = m.end;
-  }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
-}
-
-/* -------- 逐句渲染（含句子🔊） -------- */
-function decorateSentenceWithButton(
-  sentence: string,
-  dict: Map<string, UnitData['vocabulary'][number]>,
-  rate: number
-) {
-  // 用 decorateInline 做詞彙標註，再在右上角放句子🔊
-  const nodes = decorateInline(sentence, dict, rate);
-  return { nodes };
-}
-
-export default function UnitView({ data }: Props) {
-  // 全域
-  const [showZhAll, setShowZhAll] = useState(true);
-  const [imgWidth, setImgWidth] = useState(300); // 200–400
-  const [speechRate, setSpeechRate] = useState(0.9); // 0.8–1.2
-
-  // 區域中文
-  const [showZhDialogues, setShowZhDialogues] = useState<boolean | null>(null);
-  const [showZhText, setShowZhText] = useState<boolean | null>(null);
-  const [showZhReading, setShowZhReading] = useState<boolean | null>(null);
-  const [showZhVocab, setShowZhVocab] = useState<boolean | null>(null);
-
-  // Text/Reading 檢視模式
-  const [textMode, setTextMode] = useState<ViewMode>('sentence');
-  const [readingMode, setReadingMode] = useState<ViewMode>('sentence');
-
-  const dlgShow = showZhDialogues ?? showZhAll;
-  const txtShow = showZhText ?? showZhAll;
-  const readShow = showZhReading ?? showZhAll;
-  const vocabShow = showZhVocab ?? showZhAll;
-
-  // 對話逐段中文顯示切換
-  const dialogueKeys = useMemo(() => Object.keys(data.dialogues ?? {}), [data.dialogues]);
-  const [dialogZhMap, setDialogZhMap] = useState<Record<string, boolean | null>>({});
-  useEffect(() => {
-    setDialogZhMap((prev) => {
-      const next = { ...prev };
-      dialogueKeys.forEach((k) => { if (!(k in next)) next[k] = null; });
-      return next;
-    });
-  }, [dialogueKeys]);
-
-  // 詞彙字典
-  const dict = useMemo(() => {
-    const m = new Map<string, NonNullable<UnitData['vocabulary']>[number]>();
-    (data.vocabulary ?? []).forEach((v) => {
-      const key = toKeyToken(v.word || '');
-      if (key) m.set(key, v);
-    });
-    return m;
-  }, [data.vocabulary]);
-
-  /* Vocabulary 搜尋/詞性 */
-  const [vocabQuery, setVocabQuery] = useState('');
-  const [vocabPos, setVocabPos] = useState<string>('all');
-  const posList = useMemo(() => {
-    const s = new Set<string>();
-    (data.vocabulary ?? []).forEach((v) => v.pos && s.add(v.pos));
-    return Array.from(s).sort();
-  }, [data.vocabulary]);
-  const filteredVocab = useMemo(() => {
-    const q = vocabQuery.trim().toLowerCase();
-    const wantPos = vocabPos === 'all' ? null : vocabPos;
-    return (data.vocabulary ?? []).filter((v) => {
-      const passPos = wantPos ? v.pos === wantPos : true;
-      if (!q) return passPos;
-      const bucket = [
-        v.word?.toLowerCase() ?? '',
-        v.translation?.toLowerCase() ?? '',
-        v.pos?.toLowerCase() ?? '',
-        (v.kk ?? '').toLowerCase(),
-        ...(v.examples ?? []).flatMap((e) => [e.en.toLowerCase(), (e.zh ?? '').toLowerCase()]),
-      ].join(' ');
-      return passPos && bucket.includes(q);
-    });
-  }, [data.vocabulary, vocabQuery, vocabPos]);
-
-  /* 逐句的行元件（含句子🔊） */
-  const Line = ({ text }: { text: string }) => {
-    const { nodes } = useMemo(
-      () => decorateSentenceWithButton(text, dict, speechRate),
-      [text, dict, speechRate]
-    );
-    const [hover, setHover] = useState(false);
-    return (
-      <span
-        style={{ position: 'relative', paddingRight: 28 }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-      >
-        <span>{nodes}</span>
-        {hover && (
-          <button
-            type="button"
-            title="朗讀此句"
-            aria-label="朗讀此句"
-            onClick={() => speakOnce(text, speechRate)}
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: -2,
-              border: `1px solid ${palette.border}`,
-              background: '#fff',
-              borderRadius: 8,
-              padding: '2px 6px',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            🔊
-          </button>
-        )}
-      </span>
-    );
-  };
-
-  // 收集各區英文內容，供「本區朗讀」與「全部朗讀」
-  const dialogueAllTexts = useMemo(() => {
-    const out: string[] = [];
-    Object.values(data.dialogues ?? {}).forEach((lines) =>
-      lines.forEach((l) => out.push(`${l.speaker}: ${l.en}`))
-    );
-    return out;
-  }, [data.dialogues]);
-
-  // Text / Reading：支援分段＋逐句
-  const textParas = useMemo(() => normalizeParas(data.reading?.en), [data.reading]);
-  const textParasSentences = useMemo(
-    () => textParas.map((p) => splitIntoSentences(p)),
-    [textParas]
-  );
-  const textTexts = useMemo(() => textParasSentences.flat(), [textParasSentences]);
-
-  const readingParas = useMemo(() => normalizeParas(data.exercise?.en), [data.exercise]);
-  const readingParasSentences = useMemo(
-    () => readingParas.map((p) => splitIntoSentences(p)),
-    [readingParas]
-  );
-  const readingTexts = useMemo(() => readingParasSentences.flat(), [readingParasSentences]);
-
-  const allTexts = useMemo(
-    () => [...dialogueAllTexts, ...textTexts, ...readingTexts],
-    [dialogueAllTexts, textTexts, readingTexts]
-  );
-
-  /* -------- 各區右上角按鈕群（章節跳轉＋本區中文） -------- */
-  function SectionButtons({
-    showZh,
-    setShowZh,
-    selfId,
-  }: {
-    showZh: boolean;
-    setShowZh: (v: boolean) => void;
-    selfId: 'dialogues' | 'text' | 'reading' | 'exercise' | 'vocabulary';
-  }) {
-    const others: { id: string; label: string }[] = [];
-    if (selfId !== 'dialogues' && data.dialogues) others.push({ id: 'dialogues', label: 'Dialogue' });
-    if (selfId !== 'text' && data.reading) others.push({ id: 'text', label: 'Text' });
-    if (selfId !== 'reading' && data.exercise) others.push({ id: 'reading', label: 'Reading' });
-    if (selfId !== 'vocabulary' && data.vocabulary?.length) others.push({ id: 'vocabulary', label: 'Vocabulary' });
-
-    return (
-      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {others.map((o) => (
-          <a key={o.id} href={`#${o.id}`} style={pillLink()}>
-            {o.label}
-          </a>
-        ))}
-        <label style={{ ...pillBtn(), border: 'none', padding: 0 }}>
-          <span style={{ marginRight: 6, color: palette.sub }}>本區顯示中文</span>
-          <input type="checkbox" checked={showZh} onChange={(e) => setShowZh(e.target.checked)} />
-        </label>
-      </div>
-    );
-  }
+  if (!data) return null;
+  const v = data.item;
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      {/* 頂部章節導覽 + 全域控制 + 全部朗讀 */}
-      <nav
-        aria-label="單元章節導覽"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          border: `1px solid ${palette.border}`,
-          background: '#fff',
-          borderRadius: 12,
-          padding: 10,
-        }}
-      >
-        {data.dialogues ? <a href="#dialogues" style={pillLink()}>Dialogue</a> : null}
-        {data.reading ? <a href="#text" style={pillLink()}>Text</a> : null}
-        {data.exercise ? <a href="#reading" style={pillLink()}>Reading</a> : null}
-        {data.vocabulary?.length ? <a href="#vocabulary" style={pillLink()}>Vocabulary</a> : null}
+    <div
+      ref={ref}
+      onMouseEnter={() => setLock(true)}
+      onMouseLeave={() => { setLock(false); onSafeHide(); }}
+      style={{
+        position: 'fixed', left: pos.left, top: pos.top, zIndex: 1000,
+        width: 320, maxWidth: '92vw', background: '#fff', border: '1px solid #e5e7eb',
+        borderRadius: 12, boxShadow: '0 10px 24px rgba(0,0,0,.12)', padding: 12, fontSize: 13,
+      }}
+      role="dialog" aria-label={`Definition of ${v.word}`}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>{v.word}</div>
+        {v.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151' }}>{v.pos}</span>}
+        {v.kk && <span style={{ color: '#6b7280' }}>[{v.kk}]</span>}
+        <button
+          type="button" title="發音單字" onClick={() => speak(v.word, rate)}
+          style={{ marginLeft: 'auto', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}
+        >🔊</button>
+      </div>
 
-        <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <input type="checkbox" checked={showZhAll} onChange={(e) => setShowZhAll(e.target.checked)} />
-            全部顯示中文
-          </label>
+      {v.translation && <div style={{ marginBottom: 8 }}>{v.translation}</div>}
 
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: palette.sub }}>圖片寬度</span>
-            <input
-              type="range"
-              min={200}
-              max={400}
-              step={25}
-              value={imgWidth}
-              onChange={(e) => setImgWidth(parseInt(e.target.value, 10))}
-            />
-            <span style={{ width: 44, textAlign: 'right', color: palette.sub }}>{imgWidth}px</span>
-          </div>
-
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: palette.sub }}>語速</span>
-            <input
-              type="range"
-              min={0.8}
-              max={1.2}
-              step={0.05}
-              value={speechRate}
-              onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-            />
-            <span style={{ width: 42, textAlign: 'right', color: palette.sub }}>{speechRate.toFixed(2)}×</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => speakQueue(allTexts, speechRate)}
-            style={pillBtn()}
-            title="按順序朗讀對話、課文與閱讀"
-          >
-            ▶︎ 全部朗讀（英）
-          </button>
-          <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
-            ⏹ 停止
-          </button>
+      {!!v.examples?.length && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {v.examples.slice(0, 2).map((ex, i) => (
+            <div key={i} style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ flex: 1 }}>{ex.en}</div>
+                <button
+                  type="button" title="發音例句" onClick={() => speak(ex.en, rate)}
+                  style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}
+                >🔊</button>
+              </div>
+              {ex.zh && <div style={{ color: '#6b7280' }}>{ex.zh}</div>}
+            </div>
+          ))}
         </div>
-      </nav>
-
-      {/* 圖片（對話/課文/閱讀） */}
-      {data.images && (
-        <section style={{ display: 'grid', gap: 12 }}>
-          {data.images.dialogue?.length ? (
-            <div style={card()}>
-              <div style={cardHeader()}>
-                <span>Dialog (Images)</span>
-                <SectionButtons showZh={dlgShow} setShowZh={(v) => setShowZhDialogues(v)} selfId="dialogues" />
-              </div>
-              <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
-                {data.images.dialogue.map((src, i) => (
-                  <figure key={`dlgimg-${i}`} style={{ margin: 0 }}>
-                    <img
-                      src={src}
-                      alt={`dialogue-${i + 1}`}
-                      style={{
-                        width: '100%',
-                        maxWidth: imgWidth,
-                        display: 'block',
-                        borderRadius: 12,
-                        border: `1px solid ${palette.border}`,
-                      }}
-                    />
-                  </figure>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {data.images.text?.length ? (
-            <div style={card()}>
-              <div style={cardHeader()}>
-                <span>Text (Images)</span>
-                <SectionButtons showZh={txtShow} setShowZh={(v) => setShowZhText(v)} selfId="text" />
-              </div>
-              <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
-                {data.images.text.map((src, i) => (
-                  <figure key={`txtimg-${i}`} style={{ margin: 0 }}>
-                    <img
-                      src={src}
-                      alt={`text-${i + 1}`}
-                      style={{
-                        width: '100%',
-                        maxWidth: imgWidth,
-                        display: 'block',
-                        borderRadius: 12,
-                        border: `1px solid ${palette.border}`,
-                      }}
-                    />
-                  </figure>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {data.images.reading?.length ? (
-            <div style={card()}>
-              <div style={cardHeader()}>
-                <span>Reading (Images)</span>
-                <SectionButtons showZh={readShow} setShowZh={(v) => setShowZhReading(v)} selfId="reading" />
-              </div>
-              <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
-                {data.images.reading.map((src, i) => (
-                  <figure key={`readimg-${i}`} style={{ margin: 0 }}>
-                    <img
-                      src={src}
-                      alt={`reading-${i + 1}`}
-                      style={{
-                        width: '100%',
-                        maxWidth: imgWidth,
-                        display: 'block',
-                        borderRadius: 12,
-                        border: `1px solid ${palette.border}`,
-                      }}
-                    />
-                  </figure>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </section>
       )}
-
-      {/* 對話 */}
-      {data.dialogues && (
-        <section id="dialogues" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>Dialogue</span>
-            <button type="button" onClick={() => speakQueue(dialogueAllTexts, speechRate)} style={pillBtn()} title="朗讀本區所有英文">
-              ▶︎ 朗讀本區
-            </button>
-            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹ 停止</button>
-            <SectionButtons showZh={dlgShow} setShowZh={(v) => setShowZhDialogues(v)} selfId="dialogues" />
-          </div>
-
-          <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(data.dialogues).map(([key, lines]) => {
-              const thisShow = (dialogZhMap[key] ?? null) ?? dlgShow;
-              return (
-                <div key={key} style={card()}>
-                  <div style={{ ...cardHeader(), gap: 10 }}>
-                    <span>{key.toUpperCase()}</span>
-                    <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => speakQueue(lines.map((l) => `${l.speaker}: ${l.en}`), speechRate)}
-                        style={pillBtn()}
-                        title="朗讀本對話"
-                      >
-                        ▶︎ 本對話朗讀
-                      </button>
-                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-                      <label style={{ color: palette.sub }}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(thisShow)}
-                          onChange={(e) => setDialogZhMap((prev) => ({ ...prev, [key]: e.target.checked }))}
-                          style={{ marginRight: 6 }}
-                        />
-                        本對話顯示中文
-                      </label>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gap: 8, padding: '12px 14px' }}>
-                    {lines.map((ln, i) => (
-                      <div key={i} style={{ display: 'grid', gap: 2, lineHeight: 1.7 }}>
-                        <div>
-                          <b>{ln.speaker}</b>: <Line text={ln.en} />
-                        </div>
-                        {thisShow && ln.zh ? <div style={{ color: palette.sub }}>{ln.zh}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* 課文（Text）— 逐句 / 整段 */}
-      {data.reading && (
-        <section id="text" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>Text</span>
-            <div style={{ display: 'inline-flex', gap: 6, marginLeft: 6 }}>
-              <button type="button" style={segBtn(textMode === 'sentence')} onClick={() => setTextMode('sentence')}>逐句</button>
-              <button type="button" style={segBtn(textMode === 'full')} onClick={() => setTextMode('full')}>整段/整篇</button>
-            </div>
-            <button type="button" onClick={() => speakQueue(textTexts, speechRate)} style={pillBtn()} title="朗讀本區所有英文">
-              ▶︎ 朗讀本區
-            </button>
-            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹ 停止</button>
-            <SectionButtons showZh={txtShow} setShowZh={(v) => setShowZhText(v)} selfId="text" />
-          </div>
-
-          <div style={card()}>
-            <div style={cardHeader()}>{data.reading.title ?? 'Text'}</div>
-            <div style={{ padding: '12px 14px', display: 'grid', gap: 14 }}>
-              {(() => {
-                const paras = normalizeParas(data.reading?.en);
-                const parasSent = paras.map(splitIntoSentences);
-                return textMode === 'sentence' ? (
-                  /* 逐句顯示 */
-                  parasSent.map((sentences, idx) => (
-                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                        <button
-                          type="button"
-                          onClick={() => speakQueue(sentences, speechRate)}
-                          style={pillBtn()}
-                          title="朗讀本段英文"
-                        >
-                          ▶︎ 朗讀本段
-                        </button>
-                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.85 }}>
-                        {sentences.map((s, j) => (
-                          <React.Fragment key={j}>
-                            <Line text={s} />{' '}
-                          </React.Fragment>
-                        ))}
-                      </p>
-                      {txtShow && data.reading?.zh ? (
-                        Array.isArray(data.reading.zh) ? (
-                          data.reading.zh[idx] ? (
-                            <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
-                          ) : null
-                        ) : (
-                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
-                        )
-                      ) : null}
-                    </div>
-                  ))
-                ) : (
-                  /* 整段顯示（內文字卡含例句🔊） */
-                  paras.map((para, idx) => (
-                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                        <button
-                          type="button"
-                          onClick={() => speakOnce(para, speechRate)}
-                          style={pillBtn()}
-                          title="朗讀本段英文"
-                        >
-                          ▶︎ 朗讀本段
-                        </button>
-                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.85 }}>
-                        {decorateInline(para, dict, speechRate)}
-                      </p>
-                      {txtShow && data.reading?.zh ? (
-                        Array.isArray(data.reading.zh) ? (
-                          data.reading.zh[idx] ? (
-                            <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
-                          ) : null
-                        ) : (
-                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
-                        )
-                      ) : null}
-                    </div>
-                  ))
-                );
-              })()}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 閱讀（Reading）— 逐句 / 整段（沿用 exercise） */}
-      {data.exercise && (
-        <section id="reading" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>Reading</span>
-            <div style={{ display: 'inline-flex', gap: 6, marginLeft: 6 }}>
-              <button type="button" style={segBtn(readingMode === 'sentence')} onClick={() => setReadingMode('sentence')}>逐句</button>
-              <button type="button" style={segBtn(readingMode === 'full')} onClick={() => setReadingMode('full')}>整段/整篇</button>
-            </div>
-            <button type="button" onClick={() => speakQueue(readingTexts, speechRate)} style={pillBtn()} title="朗讀本區所有英文">
-              ▶︎ 朗讀本區
-            </button>
-            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹ 停止</button>
-            <SectionButtons showZh={readShow} setShowZh={(v) => setShowZhReading(v)} selfId="reading" />
-          </div>
-
-          <div style={card()}>
-            <div style={cardHeader()}>{data.exercise.title ?? 'Reading'}</div>
-            <div style={{ padding: '12px 14px', display: 'grid', gap: 14 }}>
-              {(() => {
-                const paras = normalizeParas(data.exercise?.en);
-                const parasSent = paras.map(splitIntoSentences);
-                return readingMode === 'sentence' ? (
-                  parasSent.map((sentences, idx) => (
-                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                        <button
-                          type="button"
-                          onClick={() => speakQueue(sentences, speechRate)}
-                          style={pillBtn()}
-                          title="朗讀本段英文"
-                        >
-                          ▶︎ 朗讀本段
-                        </button>
-                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.85 }}>
-                        {sentences.map((s, j) => (
-                          <React.Fragment key={j}>
-                            <Line text={s} />{' '}
-                          </React.Fragment>
-                        ))}
-                      </p>
-                      {readShow && data.exercise?.zh ? (
-                        Array.isArray(data.exercise.zh) ? (
-                          data.exercise.zh[idx] ? (
-                            <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
-                          ) : null
-                        ) : (
-                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
-                        )
-                      ) : null}
-                    </div>
-                  ))
-                ) : (
-                  paras.map((para, idx) => (
-                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                        <button
-                          type="button"
-                          onClick={() => speakOnce(para, speechRate)}
-                          style={pillBtn()}
-                          title="朗讀本段英文"
-                        >
-                          ▶︎ 朗讀本段
-                        </button>
-                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-                      </div>
-                      <p style={{ margin: 0, lineHeight: 1.85 }}>
-                        {decorateInline(para, dict, speechRate)}
-                      </p>
-                      {readShow && data.exercise?.zh ? (
-                        Array.isArray(data.exercise.zh) ? (
-                          data.exercise.zh[idx] ? (
-                            <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
-                          ) : null
-                        ) : (
-                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
-                        )
-                      ) : null}
-                    </div>
-                  ))
-                );
-              })()}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Vocabulary */}
-      {data.vocabulary?.length ? (
-        <VocabularySection
-          vocab={data.vocabulary}
-          vocabShow={vocabShow}
-          setShowZhVocab={setShowZhVocab}
-          posList={posList}
-          queryState={[vocabQuery, setVocabQuery]}
-          posState={[vocabPos, setVocabPos]}
-          speechRate={speechRate}
-        />
-      ) : null}
     </div>
   );
 }
 
-/* ---------------- Vocabulary 區塊 ---------------- */
-function VocabularySection({
-  vocab,
-  vocabShow,
-  setShowZhVocab,
-  posList,
-  queryState,
-  posState,
-  speechRate,
-}: {
-  vocab: NonNullable<UnitData['vocabulary']>;
-  vocabShow: boolean;
-  setShowZhVocab: (v: boolean) => void;
-  posList: string[];
-  queryState: [string, (v: string) => void];
-  posState: [string, (v: string) => void];
-  speechRate: number;
-}) {
-  const [q, setQ] = queryState;
-  const [pos, setPos] = posState;
+/* ===================== 主元件 ===================== */
+export default function UnitView({ data }: { data: UnitData }) {
+  /* 基本狀態 */
+  const [imgW, setImgW] = useState(300);               // 圖片 200–400
+  const [rate, setRate] = useState(0.95);              // 語速
+  const [showZhAll, setShowZhAll] = useState(true);    // 全域中文
+  const [zhDialog, setZhDialog] = useState(true);
+  const [zhText, setZhText] = useState(true);
+  const [zhRead, setZhRead] = useState(true);
+  const [zhVocab, setZhVocab] = useState(true);
 
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    const wantPos = pos === 'all' ? null : pos;
-    return (vocab ?? []).filter((v) => {
-      const passPos = wantPos ? v.pos === wantPos : true;
-      if (!query) return passPos;
-      const bucket = [
-        v.word?.toLowerCase() ?? '',
-        v.translation?.toLowerCase() ?? '',
-        v.pos?.toLowerCase() ?? '',
-        (v.kk ?? '').toLowerCase(),
-        ...(v.examples ?? []).flatMap((e) => [e.en.toLowerCase(), (e.zh ?? '').toLowerCase()]),
-      ].join(' ');
-      return passPos && bucket.includes(query);
-    });
-  }, [vocab, q, pos]);
+  useEffect(() => { setZhDialog(showZhAll); setZhText(showZhAll); setZhRead(showZhAll); setZhVocab(showZhAll); }, [showZhAll]);
 
-  return (
-    <section id="vocabulary" style={{ display: 'grid', gap: 12 }}>
-      <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>Vocabulary</span>
-        <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <a href="#dialogues" style={pillLink()}>Dialogue</a>
-          <a href="#text" style={pillLink()}>Text</a>
-          <a href="#reading" style={pillLink()}>Reading</a>
-          <label style={{ ...pillBtn(), border: 'none', padding: 0 }}>
-            <span style={{ marginRight: 6, color: palette.sub }}>本區顯示中文</span>
-            <input type="checkbox" checked={vocabShow} onChange={(e) => setShowZhVocab(e.target.checked)} />
-          </label>
-        </div>
-      </div>
+  // Text / Reading 段落/逐句切換
+  const [viewText, setViewText] = useState<'paragraph' | 'sentences'>('paragraph');
+  const [viewRead, setViewRead] = useState<'paragraph' | 'sentences'>('paragraph');
 
-      {/* 工具列 */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          alignItems: 'center',
-          border: `1px solid ${palette.border}`,
-          borderRadius: 12,
-          padding: 10,
-          background: '#fff',
-        }}
-      >
-        <input
-          type="text"
-          placeholder="搜尋單字 / 中文 / 例句 / KK / 詞性…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+  // 生字本
+  const [wb, setWb] = useState<WordbookItem[]>([]);
+  const [wbOpen, setWbOpen] = useState(false);
+  useEffect(() => { setWb(loadWB()); }, []);
+  const addWB = (i: WordbookItem) => { const n = [...wb.filter(w => w.word !== i.word), i]; setWb(n); saveWB(n); };
+  const rmWB = (w: string) => { const n = wb.filter(x => x.word !== w); setWb(n); saveWB(n); };
+  const inWB = (w: string) => wb.some(x => x.word === w);
+  const exportWB = () => {
+    const blob = new Blob([JSON.stringify(wb, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'wordbook.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 字典與比對規則
+  const vocabDict = useMemo(() => {
+    const m = new Map<string, VocabItem>();
+    (data.vocabulary ?? []).forEach(v => m.set(v.word.toLowerCase(), v));
+    return m;
+  }, [data.vocabulary]);
+  const vocabPattern = useMemo(() => {
+    const keys = [...vocabDict.keys()].sort((a, b) => b.length - a.length);
+    return keys.length ? new RegExp(`\\b(${keys.map(escapeRegExp).join('|')})\\b`, 'gi') : null;
+  }, [vocabDict]);
+
+  // Hover 卡片狀態（含延時關閉）
+  const [hover, setHover] = useState<HoverData | null>(null);
+  const [hoverLock, setHoverLock] = useState(false);
+  const hideTimer = useRef<number | null>(null);
+  const scheduleHide = () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => {
+      if (!hoverLock) setHover(null);
+    }, 140); // 短延遲，允許游標移到卡片上
+  };
+  const cancelHide = () => { if (hideTimer.current) { window.clearTimeout(hideTimer.current); hideTimer.current = null; } };
+
+  // 把命中字詞包成可 Hover 的節點（點擊可加入/移出生字本）
+  function decorateInline(text: string) {
+    if (!text || !vocabPattern) return <>{text}</>;
+    const nodes: React.ReactNode[] = [];
+    let last = 0;
+    text.replace(vocabPattern, (match, g1, offset) => {
+      const before = text.slice(last, offset);
+      if (before) nodes.push(before);
+
+      const key = String(g1 || match).toLowerCase();
+      const it = vocabDict.get(key);
+      const word = match;
+
+      if (!it) { nodes.push(word); last = offset + word.length; return word; }
+
+      nodes.push(
+        <span
+          key={`${key}-${offset}`}
+          onMouseEnter={(e) => { cancelHide(); setHover({ word, item: it, x: e.clientX, y: e.clientY }); }}
+          onMouseLeave={() => scheduleHide()}
+          onMouseMove={(e) => setHover(h => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
+          onClick={() => inWB(it.word) ? rmWB(it.word) : addWB({ word: it.word, translation: it.translation, pos: it.pos, kk: it.kk })}
+          title={`${it.word}${it.pos ? ` · ${it.pos}` : ''}${it.kk ? ` [${it.kk}]` : ''}`}
           style={{
-            flex: '1 1 220px',
-            border: `1px solid ${palette.border}`,
-            borderRadius: 10,
-            padding: '8px 10px',
-            fontSize: 14,
-          }}
-        />
-        <select
-          value={pos}
-          onChange={(e) => setPos(e.target.value)}
-          style={{
-            border: `1px solid ${palette.border}`,
-            borderRadius: 10,
-            padding: '8px 10px',
-            fontSize: 14,
-            background: '#fff',
+            background: 'linear-gradient(180deg,#fffbeb,#fef3c7)',
+            borderBottom: '2px solid #f59e0b', borderRadius: 4, padding: '0 2px', cursor: 'pointer', whiteSpace: 'pre-wrap',
           }}
         >
-          <option value="all">全部詞性</option>
-          {posList.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
+          {word}
+        </span>
+      );
 
-        {vocab?.length ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                speakQueue(
-                  vocab.flatMap((v) => {
-                    const arr = [`${v.word}.`];
-                    if (v.examples?.[0]?.en) arr.push(v.examples[0].en);
-                    if (v.examples?.[1]?.en) arr.push(v.examples[1].en);
-                    return arr;
-                  }),
-                  speechRate
-                )
-              }
-              style={pillBtn()}
-              title="朗讀單字與例句（英文）"
-            >
-              ▶︎ 朗讀單字
+      last = offset + word.length;
+      return word;
+    });
+    const rest = text.slice(last);
+    if (rest) nodes.push(rest);
+    return <>{nodes}</>;
+  }
+
+  /* ===================== 頂部工具列 ===================== */
+  function TopBar() {
+    const AnchorBtn = ({ href, children }: { href: string; children: React.ReactNode }) => (
+      <a href={href} style={{
+        textDecoration: 'none', color: '#111827', border: '1px solid #e5e7eb',
+        background: '#fff', borderRadius: 999, padding: '8px 12px', fontSize: 13
+      }}>{children}</a>
+    );
+    return (
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'linear-gradient(180deg,#fff,#fafafa)', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ maxWidth: 980, margin: '0 auto', padding: '8px 16px', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <strong style={{ fontSize: 22 }}>{data.title}</strong>
+
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label style={{ fontSize: 12, color: '#6b7280' }}>中文</label>
+            <input type="checkbox" checked={showZhAll} onChange={e => setShowZhAll(e.currentTarget.checked)} />
+
+            <div style={{ width: 8 }} />
+            <label style={{ fontSize: 12, color: '#6b7280' }}>圖寬 {imgW}px</label>
+            <input type="range" min={200} max={400} step={10} value={imgW} onChange={e => setImgW(Number(e.currentTarget.value))} />
+
+            <label style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>語速</label>
+            <input type="range" min={0.7} max={1.3} step={0.05} value={rate} onChange={e => setRate(Number(e.currentTarget.value))} />
+
+            <button type="button" onClick={stopSpeak}
+              style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12 }}>
+              ⏹ 停止朗讀
             </button>
-            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
-          </>
-        ) : null}
 
-        <span style={{ color: palette.sub, marginLeft: 'auto' }}>
-          {vocabShow ? '顯示中文例句' : '隱藏中文例句'}
+            <button type="button" onClick={() => setWbOpen(v => !v)}
+              style={{ border: '1px solid #e5e7eb', background: wbOpen ? '#eef2ff' : '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12 }}>
+              📒 生字本
+            </button>
+          </span>
+        </div>
+        <div style={{ maxWidth: 980, margin: '0 auto', padding: '8px 16px', display: 'flex', gap: 8 }}>
+          <AnchorBtn href="#dialogues">DIALOGUE</AnchorBtn>
+          <AnchorBtn href="#text">TEXT</AnchorBtn>
+          <AnchorBtn href="#reading">READING</AnchorBtn>
+          <AnchorBtn href="#vocabulary">VOCABULARY</AnchorBtn>
+        </div>
+      </div>
+    );
+  }
+
+  /* ===================== 區塊標題（含相鄰導覽 + 區塊中文/朗讀） ===================== */
+  function SectionHeader({
+    id, title, rightLinks, zhChecked, onToggleZh, onSpeakAll, extraActions,
+  }: {
+    id: string; title: string;
+    rightLinks: { href: string; label: string }[];
+    zhChecked?: boolean; onToggleZh?: (v: boolean) => void;
+    onSpeakAll?: () => void;
+    extraActions?: React.ReactNode;
+  }) {
+    return (
+      <div id={id} style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>{title}</h2>
+
+        <span style={{ display: 'flex', gap: 6 }}>
+          {rightLinks.map(lnk => (
+            <a key={lnk.href} href={lnk.href}
+              style={{ textDecoration: 'none', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#111827' }}>
+              {lnk.label}
+            </a>
+          ))}
+        </span>
+
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {extraActions}
+          {typeof zhChecked === 'boolean' && onToggleZh && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#6b7280' }}>
+              中文 <input type="checkbox" checked={zhChecked} onChange={e => onToggleZh(e.currentTarget.checked)} />
+            </label>
+          )}
+          {onSpeakAll && (
+            <>
+              <button type="button" onClick={onSpeakAll} title="朗讀本區"
+                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+                🔊 朗讀本區
+              </button>
+              <button type="button" onClick={stopSpeak} title="停止本區朗讀"
+                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+                ⏹ 停止
+              </button>
+            </>
+          )}
         </span>
       </div>
+    );
+  }
 
-      {/* 單字卡 */}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-        {filtered.map((v, i) => (
-          <div key={i} style={card()}>
-            <div style={{ ...cardHeader(), fontSize: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 24, fontWeight: 900 }}>{v.word}</span>
-              <button
-                type="button"
-                onClick={() => speakOnce(v.word, speechRate)}
-                aria-label={`發音 ${v.word}`}
-                title="發音"
-                style={{
-                  marginLeft: 'auto',
-                  border: `1px solid ${palette.border}`,
-                  background: '#fff',
-                  borderRadius: 8,
-                  padding: '4px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                🔊
-              </button>
-            </div>
-            <div style={{ padding: '10px 12px', display: 'grid', gap: 6 }}>
-              {v.translation ? (<div><b>意思：</b>{v.translation}</div>) : null}
-              {v.pos ? (<div><b>詞性：</b>{v.pos}</div>) : null}
-              {v.kk ? (<div><b>KK：</b>{v.kk}</div>) : null}
-              {v.examples?.length ? (
+  return (
+    <div style={{ maxWidth: 980, margin: '24px auto', padding: '0 16px', scrollBehavior: 'smooth' as any }}>
+      <TopBar />
+
+      {/* 對話圖 */}
+      {!!data.images?.dialogue?.length && (
+        <section style={{ marginTop: 16, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {data.images.dialogue.map((src, i) => (
+              <img key={`dlg-img-${i}`} src={src} alt={`dialogue-${i + 1}`}
+                style={{ width: imgW, maxWidth: '100%', borderRadius: 12, border: '1px solid #e5e7eb' }} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Dialogue：全體朗讀 + 各段朗讀 + 逐句朗讀 */}
+      {!!data.dialogues && (
+        <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+          <SectionHeader
+            id="dialogues" title="Dialogue"
+            rightLinks={[{ href: '#text', label: 'TEXT' }, { href: '#reading', label: 'READING' }, { href: '#vocabulary', label: 'VOCABULARY' }]}
+            zhChecked={zhDialog} onToggleZh={setZhDialog}
+            onSpeakAll={() => {
+              // 全部對話
+              const all = Object.values(data.dialogues!).flat().map(l => `${l.speaker}: ${l.en}`).join(' ');
+              speak(all, rate);
+            }}
+          />
+          <div style={{ display: 'grid', gap: 10 }}>
+            {Object.entries(data.dialogues).map(([key, lines]) => (
+              <div key={key} style={{ border: '1px solid #f3f4f6', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ fontWeight: 800 }}>{key.replace(/_/g, ' ').toUpperCase()}</div>
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <button type="button" title="朗讀本段"
+                      onClick={() => speak(lines.map(l => `${l.speaker}: ${l.en}`).join(' '), rate)}
+                      style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}>🔊 本段</button>
+                    <button type="button" title="停止本段" onClick={stopSpeak}
+                      style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}>⏹</button>
+                  </span>
+                </div>
                 <div style={{ display: 'grid', gap: 6 }}>
-                  {v.examples.slice(0, 2).map((ex, j) => (
-                    <div key={j} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div>{ex.en}</div>
-                        {vocabShow && ex.zh ? <div style={{ color: palette.sub }}>{ex.zh}</div> : null}
+                  {lines.map((ln, i) => (
+                    <div key={i} style={{ display: 'grid', gap: 2 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div><b>{ln.speaker}</b>: {decorateInline(ln.en)}</div>
+                        <button type="button" title="朗讀此句" onClick={() => speak(ln.en, rate)}
+                          style={{ marginLeft: 'auto', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => speakOnce(ex.en, speechRate)}
-                        aria-label="朗讀例句"
-                        title="朗讀例句"
-                        style={{
-                          border: `1px solid ${palette.border}`,
-                          background: '#fff',
-                          borderRadius: 8,
-                          padding: '2px 6px',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                          alignSelf: 'center',
-                        }}
-                      >
-                        🔊
-                      </button>
+                      {zhDialog && ln.zh && <div style={{ color: '#6b7280' }}>{ln.zh}</div>}
                     </div>
                   ))}
                 </div>
-              ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 課文圖 */}
+      {!!data.images?.text?.length && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {data.images.text.map((src, i) => (
+              <img key={`txt-img-${i}`} src={src} alt={`text-${i + 1}`}
+                style={{ width: imgW, maxWidth: '100%', borderRadius: 12, border: '1px solid #e5e7eb' }} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Text：段落 / 逐句 */}
+      {!!data.reading && (
+        <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+          <SectionHeader
+            id="text" title="Text"
+            rightLinks={[{ href: '#dialogues', label: 'DIALOGUE' }, { href: '#reading', label: 'READING' }, { href: '#vocabulary', label: 'VOCABULARY' }]}
+            zhChecked={zhText} onToggleZh={setZhText}
+            onSpeakAll={() => speak(data.reading!.en, rate)}
+            extraActions={
+              <label style={{ fontSize: 12, color: '#6b7280' }}>
+                視圖：
+                <select value={viewText} onChange={e => setViewText(e.currentTarget.value as any)}
+                  style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 8, padding: '2px 6px' }}>
+                  <option value="paragraph">段落</option>
+                  <option value="sentences">逐句</option>
+                </select>
+              </label>
+            }
+          />
+          {viewText === 'paragraph' ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <p style={{ margin: 0 }}>{decorateInline(data.reading.en)}</p>
+              {zhText && data.reading.zh && <p style={{ color: '#6b7280' }}>{data.reading.zh}</p>}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {splitSentences(data.reading.en).map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1 }}>{decorateInline(s)}</div>
+                  <button type="button" title="朗讀此句" onClick={() => speak(s, rate)}
+                    style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                </div>
+              ))}
+              {zhText && data.reading.zh && <p style={{ color: '#6b7280' }}>{data.reading.zh}</p>}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 閱讀圖 */}
+      {!!data.images?.reading?.length && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {data.images.reading.map((src, i) => (
+              <img key={`read-img-${i}`} src={src} alt={`reading-${i + 1}`}
+                style={{ width: imgW, maxWidth: '100%', borderRadius: 12, border: '1px solid #e5e7eb' }} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Reading（用你的 exercise 當閱讀區） */}
+      {!!data.exercise && (
+        <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+          <SectionHeader
+            id="reading" title="Reading"
+            rightLinks={[{ href: '#dialogues', label: 'DIALOGUE' }, { href: '#text', label: 'TEXT' }, { href: '#vocabulary', label: 'VOCABULARY' }]}
+            zhChecked={zhRead} onToggleZh={setZhRead}
+            onSpeakAll={() => speak(data.exercise!.en, rate)}
+            extraActions={
+              <label style={{ fontSize: 12, color: '#6b7280' }}>
+                視圖：
+                <select value={viewRead} onChange={e => setViewRead(e.currentTarget.value as any)}
+                  style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 8, padding: '2px 6px' }}>
+                  <option value="paragraph">段落</option>
+                  <option value="sentences">逐句</option>
+                </select>
+              </label>
+            }
+          />
+          {viewRead === 'paragraph' ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <p style={{ margin: 0 }}>{decorateInline(data.exercise.en)}</p>
+              {zhRead && data.exercise.zh && <p style={{ color: '#6b7280' }}>{data.exercise.zh}</p>}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {splitSentences(data.exercise.en).map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1 }}>{decorateInline(s)}</div>
+                  <button type="button" title="朗讀此句" onClick={() => speak(s, rate)}
+                    style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                </div>
+              ))}
+              {zhRead && data.exercise.zh && <p style={{ color: '#6b7280' }}>{data.exercise.zh}</p>}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Vocabulary：搜尋/篩選 + 小卡片格狀 + 朗讀全部單字 */}
+      <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginBottom: 24 }}>
+        <SectionHeader
+          id="vocabulary" title="Vocabulary"
+          rightLinks={[{ href: '#dialogues', label: 'DIALOGUE' }, { href: '#text', label: 'TEXT' }, { href: '#reading', label: 'READING' }]}
+          zhChecked={zhVocab} onToggleZh={setZhVocab}
+          extraActions={
+            <button type="button" title="朗讀全部單字"
+              onClick={() => speak((data.vocabulary ?? []).map(v => v.word).join('. '), rate)}
+              style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+              🔊 全部單字
+            </button>
+          }
+        />
+        <VocabPanel
+          list={data.vocabulary ?? []}
+          showZh={zhVocab}
+          rate={rate}
+          addWB={addWB}
+          rmWB={rmWB}
+          inWB={inWB}
+        />
+      </section>
+
+      {/* 生字本面板 */}
+      {wbOpen && (
+        <section style={{ border: '1px solid #c7d2fe', background: '#eef2ff', borderRadius: 12, padding: 12, marginBottom: 36 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>📒 生字本</h3>
+            <span style={{ color: '#6b7280' }}>（點單字可朗讀 / 可匯出 JSON）</span>
+            <button type="button" onClick={exportWB}
+              style={{ marginLeft: 'auto', border: '1px solid #a5b4fc', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
+              下載 JSON
+            </button>
+          </div>
+          {wb.length === 0 ? (
+            <div style={{ color: '#6b7280' }}>尚未加入任何單字。點主體內容的黃底單字可加入，或在 Vocabulary 卡片按「加入」。</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+              {wb.map(it => (
+                <div key={it.word} style={{ background: '#fff', border: '1px solid #a5b4fc', borderRadius: 10, padding: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 800 }}>{it.word}</div>
+                    {it.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb' }}>{it.pos}</span>}
+                    {it.kk && <span style={{ color: '#6b7280' }}>[{it.kk}]</span>}
+                    <button type="button" title="發音" onClick={() => speak(it.word, rate)}
+                      style={{ marginLeft: 'auto', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                    <button type="button" title="移除" onClick={() => rmWB(it.word)}
+                      style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🗑</button>
+                  </div>
+                  {it.translation && <div style={{ marginTop: 4 }}>{it.translation}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 漂浮說明卡（可移入卡片操作發音，不會立刻消失） */}
+      <HoverCard
+        data={hover}
+        rate={rate}
+        lock={hoverLock}
+        setLock={setHoverLock}
+        onSafeHide={scheduleHide}
+      />
+    </div>
+  );
+}
+
+/* ===================== Vocabulary 區塊（小卡片格狀） ===================== */
+function VocabPanel({
+  list, showZh, rate, addWB, rmWB, inWB,
+}: {
+  list: VocabItem[];
+  showZh: boolean;
+  rate: number;
+  addWB: (w: WordbookItem) => void;
+  rmWB: (w: string) => void;
+  inWB: (w: string) => boolean;
+}) {
+  const [q, setQ] = useState('');
+  const [pos, setPos] = useState<string>('all');
+
+  const posSet = useMemo(() => {
+    const s = new Set<string>();
+    list.forEach(v => v.pos && s.add(v.pos));
+    return Array.from(s.values()).sort();
+  }, [list]);
+
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return list
+      .filter(v => pos === 'all' ? true : (v.pos ?? '') === pos)
+      .filter(v =>
+        qq
+          ? v.word.toLowerCase().includes(qq)
+            || (v.translation ?? '').toLowerCase().includes(qq)
+            || (v.examples ?? []).some(e => e.en.toLowerCase().includes(qq))
+          : true
+      )
+      .sort((a, b) => a.word.localeCompare(b.word));
+  }, [list, q, pos]);
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' as const }}>
+        <input
+          type="search" value={q} onChange={e => setQ(e.currentTarget.value)}
+          placeholder="搜尋單字 / 中文 / 例句…"
+          style={{ flex: 1, minWidth: 240, border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 10px' }}
+        />
+        <label style={{ fontSize: 12, color: '#6b7280' }}>
+          詞性：
+          <select value={pos} onChange={e => setPos(e.currentTarget.value)}
+            style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 6px' }}>
+            <option value="all">全部</option>
+            {posSet.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {/* 小卡片格狀 */}
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+        {filtered.map(v => (
+          <div key={v.word} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ fontSize: 22, fontWeight: 900 }}>{v.word}</div>
+              {v.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb' }}>{v.pos}</span>}
+              {v.kk && <span style={{ color: '#6b7280' }}>[{v.kk}]</span>}
+            </div>
+
+            {showZh && v.translation && <div style={{ marginBottom: 6 }}>{v.translation}</div>}
+
+            {!!v.examples?.length && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {v.examples.slice(0, 2).map((ex, i) => (
+                  <div key={i} style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ flex: 1 }}>{ex.en}</div>
+                      <button type="button" title="發音例句" onClick={() => speak(ex.en, rate)}
+                        style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                    </div>
+                    {showZh && ex.zh && <div style={{ color: '#6b7280' }}>{ex.zh}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button type="button" title="發音單字" onClick={() => speak(v.word, rate)}
+                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+              <button type="button"
+                title={inWB(v.word) ? '從生字本移除' : '加入生字本'}
+                onClick={() => inWB(v.word) ? rmWB(v.word) : addWB({ word: v.word, translation: v.translation, pos: v.pos, kk: v.kk })}
+                style={{ border: '1px solid #e5e7eb', background: inWB(v.word) ? '#fef3c7' : '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
+                {inWB(v.word) ? '★ 已加入' : '☆ 加入'}
+              </button>
             </div>
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
