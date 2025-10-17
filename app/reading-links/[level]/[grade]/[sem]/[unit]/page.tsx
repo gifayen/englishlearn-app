@@ -1,9 +1,8 @@
-// app/reading-links/[level]/[grade]/[sem]/[unit]/page.tsx
-import { headers, cookies } from 'next/headers';
+import { cookies } from 'next/headers';
 import Image from 'next/image';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
-// ---- 型別 ----
 type Params = {
   level: string;
   grade: string;
@@ -11,40 +10,24 @@ type Params = {
   unit: string;
 };
 
-// ---- 工具：從 request header 推得本站絕對網址（要 await）----
-async function buildBaseUrl() {
-  const h = await headers();
-  const host =
-    h.get('x-forwarded-host') ||
-    h.get('host') ||
-    'localhost:3000';
-
-  const proto =
-    h.get('x-forwarded-proto') ||
-    (host.includes('localhost') || host.startsWith('192.') ? 'http' : 'https');
-
-  return `${proto}://${host}`;
-}
-
-// ---- 伺服器端取單元資料：一定要帶 cookie，API 才會視為已登入 ----
-async function fetchUnit(baseUrl: string, { level, grade, sem, unit }: Params) {
-  // 轉發目前請求的 cookies
-  const cookieHeader = (await cookies()).toString();
-
-  const url = `${baseUrl}/api/texts/${level}/${grade}/${sem}/${unit}`;
+// 伺服器端取資料：改用相對路徑（讓 Next 自動帶 Cookie）＋處理 401
+async function fetchUnit({ level, grade, sem, unit }: Params) {
+  // 用相對路徑，同站請求 → 會自動帶上目前請求的 Cookie（含 Supabase 登入）
+  const url = `/api/texts/${level}/${grade}/${sem}/${unit}`;
 
   const res = await fetch(url, {
     cache: 'no-store',
-    // 關鍵：把登入 cookie 帶給 API
-    headers: {
-      cookie: cookieHeader,
-      // 若你在 API 有照 CORS 或 content-type 需求，也可補上：
-      // 'accept': 'application/json',
-    },
+    credentials: 'same-origin',
   });
 
+  // 若被 middleware / API 判定未登入 → 伺服器端直接導去登入
+  if (res.status === 401) {
+    const next = `/reading-links/${level}/${grade}/${sem}/${unit}`;
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
+
   if (!res.ok) {
-    // 比方 302 被 middleware 導去 /login 時，這裡通常會拿到非 2xx
+    // 其他非 2xx（例如 404/500）→ 直接丟錯讓你在本機看到詳情
     throw new Error(`fetch failed: ${res.status}`);
   }
 
@@ -56,20 +39,17 @@ async function fetchUnit(baseUrl: string, { level, grade, sem, unit }: Params) {
     reading: data?.reading ?? null,
     exercise: data?.exercise ?? null,
     vocabulary: data?.vocabulary ?? [],
-    // 你若在 JSON 有 images 欄位，也可帶出來
     images: data?.images ?? [],
   };
 }
 
-// ---- 頁面（Next 15：params 要 await）----
 export default async function Page({
   params,
 }: {
   params: Promise<Params>;
 }) {
-  const p = await params;                // ✅ Next 15：await params
-  const baseUrl = await buildBaseUrl();  // ✅ Next 15：await headers()
-  const unit = await fetchUnit(baseUrl, p);
+  const p = await params;
+  const unit = await fetchUnit(p);
 
   return (
     <main style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px' }}>
@@ -89,7 +69,6 @@ export default async function Page({
       {unit.dialogues && (
         <section style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Dialogue</h2>
-          {/* 依你的資料結構渲染 dialogue_a / dialogue_b */}
           {['dialogue_a', 'dialogue_b'].map((key) => {
             const lines = (unit.dialogues as any)[key] as Array<any> | undefined;
             if (!lines || !lines.length) return null;
@@ -108,7 +87,7 @@ export default async function Page({
         </section>
       )}
 
-      {/* 課文/閱讀 */}
+      {/* 文章/閱讀 */}
       {unit.reading && (
         <section style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
@@ -121,7 +100,7 @@ export default async function Page({
         </section>
       )}
 
-      {/* 練習段落（若有） */}
+      {/* 練習段落 */}
       {unit.exercise && (
         <section style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
@@ -159,7 +138,7 @@ export default async function Page({
         </section>
       )}
 
-      {/* 圖片（如果有需要顯示） */}
+      {/* 圖片（若 JSON 有 images 陣列） */}
       {!!unit.images?.length && (
         <section>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Images</h2>
