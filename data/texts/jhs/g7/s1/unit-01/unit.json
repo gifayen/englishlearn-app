@@ -3,123 +3,31 @@
   "title": "Unit 1 – Who's That Handsome Boy?",
   "dialogues": {
     "dialogue_a": [
-      {
-        "speaker": "Lily",
-        "en": "Good afternoon, Kevin.",
-        "zh": "午安，凱文。"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "Good afternoon, Lily.",
-        "zh": "午安，莉莉。"
-      },
-      {
-        "speaker": "Lily",
-        "en": "Look! Who’s that man in the blue shirt?",
-        "zh": "你看！那位穿藍襯衫的男子是誰？"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "Oh, that’s my uncle, Tom.",
-        "zh": "噢，那是我叔叔，湯姆。"
-      },
-      {
-        "speaker": "Lily",
-        "en": "Is he a police officer?",
-        "zh": "他是警察嗎？"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "No, he isn’t. He’s a writer.",
-        "zh": "不是，他是作家。"
-      },
-      {
-        "speaker": "Lily",
-        "en": "Really? He looks young.",
-        "zh": "真的嗎？他看起來很年輕。"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "He’s thirty-two years old.",
-        "zh": "他三十二歲。"
-      },
-      {
-        "speaker": "Lily",
-        "en": "And the girl next to him?",
-        "zh": "那他旁邊的女孩呢？"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "That’s his daughter, Amy.",
-        "zh": "那是他女兒，艾咪。"
-      },
-      {
-        "speaker": "Lily",
-        "en": "She’s beautiful and very tall!",
-        "zh": "她好漂亮，也很高！"
-      },
-      {
-        "speaker": "Kevin",
-        "en": "She’s a singer, too.",
-        "zh": "她也是一位歌手。"
-      }
+      { "speaker": "Lily", "en": "Good afternoon, Kevin.", "zh": "午安，凱文。" },
+      { "speaker": "Kevin", "en": "Good afternoon, Lily.", "zh": "午安，莉莉。" },
+      { "speaker": "Lily", "en": "Look! Who’s that man in the blue shirt?", "zh": "你看！那位穿藍襯衫的男子是誰？" },
+      { "speaker": "Kevin", "en": "Oh, that’s my uncle, Tom.", "zh": "噢，那是我叔叔，湯姆。" },
+      { "speaker": "Lily", "en": "Is he a police officer?", "zh": "他是警察嗎？" },
+      { "speaker": "Kevin", "en": "No, he isn’t. He’s a writer.", "zh": "不是，他是作家。" },
+      { "speaker": "Lily", "en": "Really? He looks young.", "zh": "真的嗎？他看起來很年輕。" },
+      { "speaker": "Kevin", "en": "He’s thirty-two years old.", "zh": "他三十二歲。" },
+      { "speaker": "Lily", "en": "And the girl next to him?", "zh": "那他旁邊的女孩呢？" },
+      { "speaker": "Kevin", "en": "That’s his daughter, Amy.", "zh": "那是他女兒，艾咪。" },
+      { "speaker": "Lily", "en": "She’s beautiful and very tall!", "zh": "她好漂亮，也很高！" },
+      { "speaker": "Kevin", "en": "She’s a singer, too.", "zh": "她也是一位歌手。" }
     ],
     "dialogue_b": [
-      {
-        "speaker": "Amy",
-        "en": "Hi, I’m Amy Green. Nice to meet you.",
-        "zh": "嗨，我是艾咪‧格林。很高興認識你。"
-      },
-      {
-        "speaker": "Ben",
-        "en": "I’m Ben White. Nice to meet you, too.",
-        "zh": "我是班‧懷特。我也很高興認識你。"
-      },
-      {
-        "speaker": "Amy",
-        "en": "Who’s that woman near the door?",
-        "zh": "門邊那位女士是誰？"
-      },
-      {
-        "speaker": "Ben",
-        "en": "That’s my aunt, Kate. She’s our new manager.",
-        "zh": "那是我阿姨，凱特。她是我們的新經理。"
-      },
-      {
-        "speaker": "Amy",
-        "en": "She’s very kind and smart.",
-        "zh": "她非常親切又聰明。"
-      },
-      {
-        "speaker": "Ben",
-        "en": "Yes, she is. She’s an office worker.",
-        "zh": "對啊。她是上班族。"
-      },
-      {
-        "speaker": "Amy",
-        "en": "And the tall boy with her?",
-        "zh": "那位和她一起的高個男孩呢？"
-      },
-      {
-        "speaker": "Ben",
-        "en": "He’s my cousin, Leo. He’s not a student.",
-        "zh": "他是我表哥，李歐。他不是學生。"
-      },
-      {
-        "speaker": "Amy",
-        "en": "Oh?",
-        "zh": "哦？"
-      },
-      {
-        "speaker": "Ben",
-        "en": "He’s a police officer. He’s twenty-four years old.",
-        "zh": "他是警察，二十四歲。"
-      },
-      {
-        "speaker": "Amy",
-        "en": "I see.",
-        "zh": "我知道了。"
-      }
+      { "speaker": "Amy", "en": "Hi, I’m Amy Green. Nice to meet you.", "zh": "嗨，我是艾咪‧格林。很高興認識你。" },
+      { "speaker": "Ben", "en": "I’m Ben White. Nice to meet you, too.", "zh": "我是班‧懷特。我也很高興認識你。" },
+      { "speaker": "Amy", "en": "Who’s that woman near the door?", "zh": "門邊那位女士是誰？" },
+      { "speaker": "Ben", "en": "That’s my aunt, Kate. She’s our new manager.", "zh": "那是我阿姨，凱特。她是我們的新經理。" },
+      { "speaker": "Amy", "en": "She’s very kind and smart.", "zh": "她非常親切又聰明。" },
+      { "speaker": "Ben", "en": "Yes, she is. She’s an office worker.", "zh": "對啊。她是上班族。" },
+      { "speaker": "Amy", "en": "And the tall boy with her?", "zh": "那位和她一起的高個男孩呢？" },
+      { "speaker": "Ben", "en": "He’s my cousin, Leo. He’s not a student.", "zh": "他是我表哥，李歐。他不是學生。" },
+      { "speaker": "Amy", "en": "Oh?", "zh": "哦？" },
+      { "speaker": "Ben", "en": "He’s a police officer. He’s twenty-four years old.", "zh": "他是警察，二十四歲。" },
+      { "speaker": "Amy", "en": "I see.", "zh": "我知道了。" }
     ]
   },
   "reading": {
@@ -136,417 +44,301 @@
     {
       "word": "handsome",
       "translation": "英俊的",
+      "pos": "adj.",
+      "kk": "[ˈhænsəm]",
       "examples": [
-        {
-          "en": "He is a handsome actor.",
-          "zh": "他是一位英俊的演員。"
-        },
-        {
-          "en": "My brother is very handsome.",
-          "zh": "我哥哥非常英俊。"
-        }
+        { "en": "He is a handsome actor.", "zh": "他是一位英俊的演員。" },
+        { "en": "My brother is very handsome.", "zh": "我哥哥非常英俊。" }
       ]
     },
     {
       "word": "new",
       "translation": "新的",
+      "pos": "adj.",
+      "kk": "[nu]",
       "examples": [
-        {
-          "en": "This is my new pencil.",
-          "zh": "這是我的新鉛筆。"
-        },
-        {
-          "en": "She has a new classmate.",
-          "zh": "她有一位新同學。"
-        }
+        { "en": "This is my new pencil.", "zh": "這是我的新鉛筆。" },
+        { "en": "She has a new classmate.", "zh": "她有一位新同學。" }
       ]
     },
     {
       "word": "classmate",
       "translation": "同學",
+      "pos": "n.",
+      "kk": "[ˈklæsˌmet]",
       "examples": [
-        {
-          "en": "Ben is my classmate.",
-          "zh": "班是我的同學。"
-        },
-        {
-          "en": "I sit next to my classmate, Mia.",
-          "zh": "我坐在我的同學米亞旁邊。"
-        }
+        { "en": "Ben is my classmate.", "zh": "班是我的同學。" },
+        { "en": "I sit next to my classmate, Mia.", "zh": "我坐在我的同學米亞旁邊。" }
       ]
     },
     {
       "word": "young",
       "translation": "年輕的",
+      "pos": "adj.",
+      "kk": "[jʌŋ]",
       "examples": [
-        {
-          "en": "That young boy is my cousin.",
-          "zh": "那個年輕男孩是我表親。"
-        },
-        {
-          "en": "My sister is young and smart.",
-          "zh": "我妹妹年輕又聰明。"
-        }
+        { "en": "That young boy is my cousin.", "zh": "那個年輕男孩是我表親。" },
+        { "en": "My sister is young and smart.", "zh": "我妹妹年輕又聰明。" }
       ]
     },
     {
       "word": "woman",
       "translation": "女人",
+      "pos": "n.",
+      "kk": "[ˈwʊmən]",
       "examples": [
-        {
-          "en": "The woman is my aunt.",
-          "zh": "那位女士是我的阿姨。"
-        },
-        {
-          "en": "Who is that woman over there?",
-          "zh": "那邊那個女人是誰？"
-        }
+        { "en": "The woman is my aunt.", "zh": "那位女士是我的阿姨。" },
+        { "en": "Who is that woman over there?", "zh": "那邊那個女人是誰？" }
       ]
     },
     {
       "word": "very",
       "translation": "非常",
+      "pos": "adv.",
+      "kk": "[ˈvɛri]",
       "examples": [
-        {
-          "en": "He is very tall.",
-          "zh": "他非常高。"
-        },
-        {
-          "en": "She is very nice to me.",
-          "zh": "她對我很好。"
-        }
+        { "en": "He is very tall.", "zh": "他非常高。" },
+        { "en": "She is very nice to me.", "zh": "她對我很好。" }
       ]
     },
     {
       "word": "beautiful",
       "translation": "美麗的",
+      "pos": "adj.",
+      "kk": "[ˈbjutəfəl]",
       "examples": [
-        {
-          "en": "Your sister is beautiful.",
-          "zh": "你妹妹很漂亮。"
-        },
-        {
-          "en": "The garden looks beautiful today.",
-          "zh": "今天花園看起來很美。"
-        }
+        { "en": "Your sister is beautiful.", "zh": "你妹妹很漂亮。" },
+        { "en": "The garden looks beautiful today.", "zh": "今天花園看起來很美。" }
       ]
     },
     {
       "word": "too",
       "translation": "也",
+      "pos": "adv.",
+      "kk": "[tu]",
       "examples": [
-        {
-          "en": "She is kind and funny, too.",
-          "zh": "她也很親切又有趣。"
-        },
-        {
-          "en": "I want to go, too.",
-          "zh": "我也想去。"
-        }
+        { "en": "She is kind and funny, too.", "zh": "她也很親切又有趣。" },
+        { "en": "I want to go, too.", "zh": "我也想去。" }
       ]
     },
     {
       "word": "Nice to meet you.",
       "translation": "很高興認識你",
+      "pos": "phr.",
+      "kk": null,
       "examples": [
-        {
-          "en": "Nice to meet you, Amy.",
-          "zh": "艾咪，很高興認識你。"
-        },
-        {
-          "en": "Hi! Nice to meet you.",
-          "zh": "嗨！很高興認識你。"
-        }
+        { "en": "Nice to meet you, Amy.", "zh": "艾咪，很高興認識你。" },
+        { "en": "Hi! Nice to meet you.", "zh": "嗨！很高興認識你。" }
       ]
     },
     {
       "word": "cousin",
       "translation": "堂/表兄弟姐妹",
+      "pos": "n.",
+      "kk": "[ˈkʌzən]",
       "examples": [
-        {
-          "en": "My cousin is in high school.",
-          "zh": "我表親念高中。"
-        },
-        {
-          "en": "Leo is my cousin.",
-          "zh": "李歐是我的表親。"
-        }
+        { "en": "My cousin is in high school.", "zh": "我表親念高中。" },
+        { "en": "Leo is my cousin.", "zh": "李歐是我的表親。" }
       ]
     },
     {
       "word": "really",
       "translation": "真的",
+      "pos": "adv.",
+      "kk": "[ˈriəli]",
       "examples": [
-        {
-          "en": "Really? That’s cool!",
-          "zh": "真的嗎？那太酷了！"
-        },
-        {
-          "en": "Do you really like this song?",
-          "zh": "你真的喜歡這首歌嗎？"
-        }
+        { "en": "Really? That’s cool!", "zh": "真的嗎？那太酷了！" },
+        { "en": "Do you really like this song?", "zh": "你真的喜歡這首歌嗎？" }
       ]
     },
     {
       "word": "year(s) old",
       "translation": "…歲",
+      "pos": "phr.",
+      "kk": null,
       "examples": [
-        {
-          "en": "I am twelve years old.",
-          "zh": "我十二歲。"
-        },
-        {
-          "en": "She is ten years old.",
-          "zh": "她十歲。"
-        }
+        { "en": "I am twelve years old.", "zh": "我十二歲。" },
+        { "en": "She is ten years old.", "zh": "她十歲。" }
       ]
     },
     {
       "word": "I see.",
       "translation": "我知道了",
+      "pos": "phr.",
+      "kk": null,
       "examples": [
-        {
-          "en": "I see. Thanks for explaining.",
-          "zh": "我知道了，謝謝你解釋。"
-        },
-        {
-          "en": "Oh, I see what you mean.",
-          "zh": "哦，我懂你的意思了。"
-        }
+        { "en": "I see. Thanks for explaining.", "zh": "我知道了，謝謝你解釋。" },
+        { "en": "Oh, I see what you mean.", "zh": "哦，我懂你的意思了。" }
       ]
     },
     {
       "word": "singer",
       "translation": "歌手",
+      "pos": "n.",
+      "kk": "[ˈsɪŋɚ]",
       "examples": [
-        {
-          "en": "My aunt is a singer.",
-          "zh": "我阿姨是歌手。"
-        },
-        {
-          "en": "She wants to be a singer.",
-          "zh": "她想當歌手。"
-        }
+        { "en": "My aunt is a singer.", "zh": "我阿姨是歌手。" },
+        { "en": "She wants to be a singer.", "zh": "她想當歌手。" }
       ]
     },
     {
       "word": "office worker",
       "translation": "上班族",
+      "pos": "n.",
+      "kk": "[ˈɔfɪs] [ˈwɝkɚ]",
       "examples": [
-        {
-          "en": "My dad is an office worker.",
-          "zh": "我爸爸是上班族。"
-        },
-        {
-          "en": "That man is an office worker.",
-          "zh": "那位男士是上班族。"
-        }
+        { "en": "My dad is an office worker.", "zh": "我爸爸是上班族。" },
+        { "en": "That man is an office worker.", "zh": "那位男士是上班族。" }
       ]
     },
     {
       "word": "housewife",
       "translation": "家庭主婦",
+      "pos": "n.",
+      "kk": "[ˈhaʊsˌwaɪf]",
       "examples": [
-        {
-          "en": "My mom is a housewife.",
-          "zh": "我媽媽是家庭主婦。"
-        },
-        {
-          "en": "The housewife is cooking dinner.",
-          "zh": "那位家庭主婦正在煮晚餐。"
-        }
+        { "en": "My mom is a housewife.", "zh": "我媽媽是家庭主婦。" },
+        { "en": "The housewife is cooking dinner.", "zh": "那位家庭主婦正在煮晚餐。" }
       ]
     },
     {
       "word": "police officer",
       "translation": "警察",
+      "pos": "n.",
+      "kk": "[pəˈlis] [ˈɔfəsɚ]",
       "examples": [
-        {
-          "en": "He is a police officer.",
-          "zh": "他是警察。"
-        },
-        {
-          "en": "The police officer is kind.",
-          "zh": "那位警察很親切。"
-        }
+        { "en": "He is a police officer.", "zh": "他是警察。" },
+        { "en": "The police officer is kind.", "zh": "那位警察很親切。" }
       ]
     },
     {
       "word": "writer",
       "translation": "作家",
+      "pos": "n.",
+      "kk": "[ˈraɪtɚ]",
       "examples": [
-        {
-          "en": "My uncle is a writer.",
-          "zh": "我叔叔是作家。"
-        },
-        {
-          "en": "She is writing a book.",
-          "zh": "她正在寫一本書。"
-        }
+        { "en": "My uncle is a writer.", "zh": "我叔叔是作家。" },
+        { "en": "She is writing a book.", "zh": "她正在寫一本書。" }
       ]
     },
     {
       "word": "uncle",
       "translation": "叔叔；舅舅",
+      "pos": "n.",
+      "kk": "[ˈʌŋkəl]",
       "examples": [
-        {
-          "en": "That man is my uncle.",
-          "zh": "那個人是我叔叔。"
-        },
-        {
-          "en": "My uncle is tall.",
-          "zh": "我叔叔很高。"
-        }
+        { "en": "That man is my uncle.", "zh": "那個人是我叔叔。" },
+        { "en": "My uncle is tall.", "zh": "我叔叔很高。" }
       ]
     },
     {
       "word": "aunt",
       "translation": "阿姨；姑姑",
+      "pos": "n.",
+      "kk": "[ænt]",
       "examples": [
-        {
-          "en": "My aunt is very nice.",
-          "zh": "我阿姨非常好。"
-        },
-        {
-          "en": "She is my aunt.",
-          "zh": "她是我阿姨。"
-        }
+        { "en": "My aunt is very nice.", "zh": "我阿姨非常好。" },
+        { "en": "She is my aunt.", "zh": "她是我阿姨。" }
       ]
     },
     {
       "word": "wife",
       "translation": "妻子",
+      "pos": "n.",
+      "kk": "[waɪf]",
       "examples": [
-        {
-          "en": "His wife is a nurse.",
-          "zh": "他妻子是護士。"
-        },
-        {
-          "en": "She is John's wife.",
-          "zh": "她是約翰的妻子。"
-        }
+        { "en": "His wife is a nurse.", "zh": "他妻子是護士。" },
+        { "en": "She is John's wife.", "zh": "她是約翰的妻子。" }
       ]
     },
     {
       "word": "daughter",
       "translation": "女兒",
+      "pos": "n.",
+      "kk": "[ˈdɔtɚ]",
       "examples": [
-        {
-          "en": "They have one daughter.",
-          "zh": "他們有一個女兒。"
-        },
-        {
-          "en": "Her daughter is eight.",
-          "zh": "她的女兒八歲。"
-        }
+        { "en": "They have one daughter.", "zh": "他們有一個女兒。" },
+        { "en": "Her daughter is eight.", "zh": "她的女兒八歲。" }
       ]
     },
     {
       "word": "husband",
       "translation": "丈夫",
+      "pos": "n.",
+      "kk": "[ˈhʌzbənd]",
       "examples": [
-        {
-          "en": "Her husband is tall.",
-          "zh": "她丈夫很高。"
-        },
-        {
-          "en": "My aunt's husband is funny.",
-          "zh": "我阿姨的丈夫很風趣。"
-        }
+        { "en": "Her husband is tall.", "zh": "她丈夫很高。" },
+        { "en": "My aunt's husband is funny.", "zh": "我阿姨的丈夫很風趣。" }
       ]
     },
     {
       "word": "son",
       "translation": "兒子",
+      "pos": "n.",
+      "kk": "[sʌn]",
       "examples": [
-        {
-          "en": "He has a son.",
-          "zh": "他有一個兒子。"
-        },
-        {
-          "en": "Her son is my classmate.",
-          "zh": "她兒子是我的同學。"
-        }
+        { "en": "He has a son.", "zh": "他有一個兒子。" },
+        { "en": "Her son is my classmate.", "zh": "她兒子是我的同學。" }
       ]
     },
     {
       "word": "dear",
       "translation": "親愛的",
+      "pos": "adj.",
+      "kk": "[dɪr]",
       "examples": [
-        {
-          "en": "She is my dear friend.",
-          "zh": "她是我親愛的朋友。"
-        },
-        {
-          "en": "I love my dear family.",
-          "zh": "我愛我親愛的家人。"
-        }
+        { "en": "She is my dear friend.", "zh": "她是我親愛的朋友。" },
+        { "en": "I love my dear family.", "zh": "我愛我親愛的家人。" }
       ]
     },
     {
       "word": "family",
       "translation": "家庭",
+      "pos": "n.",
+      "kk": "[ˈfæməli]",
       "examples": [
-        {
-          "en": "I live with my family.",
-          "zh": "我和家人住在一起。"
-        },
-        {
-          "en": "My family is very nice.",
-          "zh": "我的家庭很好。"
-        }
+        { "en": "I live with my family.", "zh": "我和家人住在一起。" },
+        { "en": "My family is very nice.", "zh": "我的家庭很好。" }
       ]
     },
     {
       "word": "elementary school",
       "translation": "國小",
+      "pos": "n.",
+      "kk": "[ˌɛləˈmɛntri] [skul]",
       "examples": [
-        {
-          "en": "She is in elementary school.",
-          "zh": "她是國小生。"
-        },
-        {
-          "en": "I go to elementary school.",
-          "zh": "我念國小。"
-        }
+        { "en": "She is in elementary school.", "zh": "她是國小生。" },
+        { "en": "I go to elementary school.", "zh": "我念國小。" }
       ]
     },
     {
       "word": "junior high school",
       "translation": "國中",
+      "pos": "n.",
+      "kk": "[ˈdʒunjɚ] [haɪ] [skul]",
       "examples": [
-        {
-          "en": "I am in junior high school.",
-          "zh": "我念國中。"
-        },
-        {
-          "en": "Junior high school starts at 13.",
-          "zh": "國中從十三歲開始。"
-        }
+        { "en": "I am in junior high school.", "zh": "我念國中。" },
+        { "en": "Junior high school starts at 13.", "zh": "國中從十三歲開始。" }
       ]
     },
     {
       "word": "baby",
       "translation": "嬰兒",
+      "pos": "n.",
+      "kk": "[ˈbebi]",
       "examples": [
-        {
-          "en": "That baby is cute.",
-          "zh": "那個嬰兒很可愛。"
-        },
-        {
-          "en": "My brother is still a baby.",
-          "zh": "我弟弟還是嬰兒。"
-        }
+        { "en": "That baby is cute.", "zh": "那個嬰兒很可愛。" },
+        { "en": "My brother is still a baby.", "zh": "我弟弟還是嬰兒。" }
       ]
     }
   ],
   "images": {
-  "dialogue": [
-    "/pics-reader/jhs/g7/s1/unit-01/dialog-01.png",
-    "/pics-reader/jhs/g7/s1/unit-01/dialog-02.png"
-  ],
-  "text": [],
-  "reading": []
+    "dialogue": [
+      "/pics-reader/jhs/g7/s1/unit-01/dialog-01.png",
+      "/pics-reader/jhs/g7/s1/unit-01/dialog-02.png"
+    ],
+    "text": [],
+    "reading": []
   },
   "imagesByDialogue": {
   "dialogue_a": ["/pics-reader/.../dialog-01.png"],
