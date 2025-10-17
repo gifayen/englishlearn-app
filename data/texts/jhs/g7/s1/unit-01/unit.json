@@ -539,5 +539,14 @@
         }
       ]
     }
-  ]
+  ],
+  "images": {
+  "dialogue": [
+    "/pics-reader/jhs/g7/s1/unit-01/dialog-01.png",
+    "/pics-reader/jhs/g7/s1/unit-01/dialog-02.png"
+  ],
+  "text": [],
+  "reading": []
 }
+}
+
