@@ -6,16 +6,12 @@ import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-/**
- * 例：
- * /api/texts/jhs/g7/s1/unit-01  →  data/texts/jhs/g7/s1/unit-01/unit.json
- */
 export async function GET(
   _req: Request,
-  ctx: { params: { slug: string[] } }
+  ctx: { params: Promise<{ slug: string[] }> } // ★ 重點：Promise
 ) {
   try {
-    const slug = ctx.params.slug || [];
+    const { slug = [] } = await ctx.params;     // ★ 重點：await
     if (slug.length !== 4) {
       return NextResponse.json({ error: 'invalid slug' }, { status: 400 });
     }

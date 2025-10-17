@@ -543,8 +543,8 @@ export default function SiteHeader() {
           {/* 左側固定導覽（加上可達性微調） */}
           <Link href="/"              style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>首頁</Link>
           <Link href="/essay-checker" style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>作文自動偵錯批改</Link>
-          <Link href="/reading-links" style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>文章閱讀超連結學習</Link>
-          <Link href="/cn-patterns"   style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>中文句型翻譯學習</Link>
+          <Link href="/reading-links" style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>對話篇章超導學習</Link>
+          <Link href="/cn-patterns"   style={navLinkStyle} onFocus={onFocusRing} onBlur={onBlurRing} onMouseEnter={onHoverUnderline} onMouseLeave={onLeaveUnderline}>作文書寫自導學習</Link>
 
           {/* 右側功能區 */}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
