@@ -1,11 +1,17 @@
 // app/reading-links/[level]/[grade]/[sem]/[unit]/page.tsx
-export const dynamic = 'force-dynamic';
+import { headers, cookies } from 'next/headers';
+import Image from 'next/image';
+import Link from 'next/link';
 
-import { headers } from 'next/headers';
+// ---- 型別 ----
+type Params = {
+  level: string;
+  grade: string;
+  sem: string;
+  unit: string;
+};
 
-type Params = { level: string; grade: string; sem: string; unit: string };
-
-// 需要 await headers()
+// ---- 工具：從 request header 推得本站絕對網址（要 await）----
 async function buildBaseUrl() {
   const h = await headers();
   const host =
@@ -20,170 +26,151 @@ async function buildBaseUrl() {
   return `${proto}://${host}`;
 }
 
-async function fetchUnit(baseUrl: string, p: Params) {
-  const { level, grade, sem, unit } = p;
+// ---- 伺服器端取單元資料：一定要帶 cookie，API 才會視為已登入 ----
+async function fetchUnit(baseUrl: string, { level, grade, sem, unit }: Params) {
+  // 轉發目前請求的 cookies
+  const cookieHeader = (await cookies()).toString();
+
   const url = `${baseUrl}/api/texts/${level}/${grade}/${sem}/${unit}`;
-  const res = await fetch(url, { cache: 'no-store' });
+
+  const res = await fetch(url, {
+    cache: 'no-store',
+    // 關鍵：把登入 cookie 帶給 API
+    headers: {
+      cookie: cookieHeader,
+      // 若你在 API 有照 CORS 或 content-type 需求，也可補上：
+      // 'accept': 'application/json',
+    },
+  });
 
   if (!res.ok) {
-    // 例如被 middleware 擋掉轉成 /login 的 HTML，就會不是 2xx
+    // 比方 302 被 middleware 導去 /login 時，這裡通常會拿到非 2xx
     throw new Error(`fetch failed: ${res.status}`);
   }
 
-  // 確保這裡拿到的是 JSON，而不是 HTML（若是 HTML，上一段通常已非 2xx）
   const data = await res.json();
 
   return {
     title: data?.title ?? 'Untitled',
-    imageBase: data?.meta?.imageBase ?? '',
-    sections: Array.isArray(data?.sections) ? data.sections : [],
+    dialogues: data?.dialogues ?? null,
+    reading: data?.reading ?? null,
+    exercise: data?.exercise ?? null,
+    vocabulary: data?.vocabulary ?? [],
+    // 你若在 JSON 有 images 欄位，也可帶出來
+    images: data?.images ?? [],
   };
 }
 
-function Paragraphs({ en, zh }: { en?: string; zh?: string }) {
-  const toParas = (s?: string) =>
-    (s ?? '')
-      .split(/\n{2,}|\r?\n/g)
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-  const enParas = toParas(en);
-  const zhParas = toParas(zh);
+// ---- 頁面（Next 15：params 要 await）----
+export default async function Page({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  const p = await params;                // ✅ Next 15：await params
+  const baseUrl = await buildBaseUrl();  // ✅ Next 15：await headers()
+  const unit = await fetchUnit(baseUrl, p);
 
   return (
-    <div style={{ display: 'grid', gap: 4 }}>
-      {enParas.map((p, i) => (
-        <p key={`en-${i}`}>{p}</p>
-      ))}
-      {zhParas.length ? (
-        <div style={{ color: '#374151' }}>
-          {zhParas.map((p, i) => (
-            <p key={`zh-${i}`}>{p}</p>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+    <main style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px' }}>
+      <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800 }}>{unit.title}</h1>
+        <span style={{ fontSize: 13, color: '#6b7280' }}>
+          {p.level.toUpperCase()} / {p.grade.toUpperCase()} / {p.sem.toUpperCase()} / {p.unit}
+        </span>
+        <span style={{ marginLeft: 'auto' }}>
+          <Link href="/reading-links" style={{ fontSize: 13, color: '#1d4ed8', textDecoration: 'none' }}>
+            ← 回總覽
+          </Link>
+        </span>
+      </header>
 
-function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
-  const t = String(s?.type ?? '').toLowerCase();
-
-  if (t === 'dialogs' || t === 'dialogues' || t === 'conversations') {
-    const items = Array.isArray(s?.items) ? s.items : [];
-    return (
-      <section style={{ marginTop: 24 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Dialogue</h3>
-        {items.map((dlg: any, i: number) => (
-          <div key={i} style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 12 }}>
-            {Array.isArray(dlg?.lines) ? (
-              dlg.lines.map((ln: any, j: number) => (
-                <p key={j} style={{ margin: '4px 0' }}>
-                  {ln?.speaker ? <strong>{ln.speaker}: </strong> : null}
-                  {ln?.en ?? ''}
-                  {ln?.zh ? <span style={{ color: '#374151', marginLeft: 8 }}>（{ln.zh}）</span> : null}
-                </p>
-              ))
-            ) : null}
-          </div>
-        ))}
-      </section>
-    );
-  }
-
-  if (t === 'reading') {
-    const items = Array.isArray(s?.items) ? s.items : [];
-    return (
-      <section style={{ marginTop: 24 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Reading</h3>
-        {items.map((p: any, i: number) => (
-          <article key={i} style={{ marginBottom: 16 }}>
-            {p?.title ? <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{p.title}</h4> : null}
-            <Paragraphs en={p?.en} zh={p?.zh} />
-            {p?.image ? (
-              <img
-                src={`${imageBase}/${p.image}`}
-                alt=""
-                style={{ maxWidth: '100%', borderRadius: 12, marginTop: 8, border: '1px solid #e5e7eb' }}
-              />
-            ) : null}
-          </article>
-        ))}
-      </section>
-    );
-  }
-
-  if (t === 'exercise') {
-    const items = Array.isArray(s?.items) ? s.items : [];
-    return (
-      <section style={{ marginTop: 24 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Exercise</h3>
-        {items.map((p: any, i: number) => (
-          <article key={i} style={{ marginBottom: 16 }}>
-            {p?.title ? <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{p.title}</h4> : null}
-            <Paragraphs en={p?.en} zh={p?.zh} />
-            {p?.image ? (
-              <img
-                src={`${imageBase}/${p.image}`}
-                alt=""
-                style={{ maxWidth: '100%', borderRadius: 12, marginTop: 8, border: '1px solid #e5e7eb' }}
-              />
-            ) : null}
-          </article>
-        ))}
-      </section>
-    );
-  }
-
-  if (t === 'vocab' || t === 'vocabulary' || t === 'words') {
-    const items = Array.isArray(s?.items) ? s.items : [];
-    return (
-      <section style={{ marginTop: 24 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Vocabulary</h3>
-        <ul style={{ paddingLeft: 18 }}>
-          {items.map((w: any, i: number) => (
-            <li key={i} style={{ marginBottom: 8 }}>
-              <div>
-                <strong>{w?.word}</strong>
-                {w?.translation ? <span style={{ color: '#374151' }}> — {w.translation}</span> : null}
+      {/* 對話 */}
+      {unit.dialogues && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Dialogue</h2>
+          {/* 依你的資料結構渲染 dialogue_a / dialogue_b */}
+          {['dialogue_a', 'dialogue_b'].map((key) => {
+            const lines = (unit.dialogues as any)[key] as Array<any> | undefined;
+            if (!lines || !lines.length) return null;
+            return (
+              <div key={key} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                {lines.map((line, idx) => (
+                  <p key={idx} style={{ margin: '6px 0' }}>
+                    <strong style={{ marginRight: 8 }}>{line.speaker}:</strong>
+                    <span>{line.en}</span>
+                    {line.zh ? <span style={{ color: '#6b7280', marginLeft: 8 }}>（{line.zh}）</span> : null}
+                  </p>
+                ))}
               </div>
-              {Array.isArray(w?.examples) && w.examples.length ? (
-                <div style={{ marginTop: 4 }}>
-                  {w.examples.map((e: any, j: number) => (
-                    <div key={j} style={{ color: '#4b5563' }}>
-                      {e?.en ?? ''}
-                      {e?.zh ? <span style={{ marginLeft: 6 }}>（{e.zh}）</span> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
+            );
+          })}
+        </section>
+      )}
 
-  return null;
-}
+      {/* 課文/閱讀 */}
+      {unit.reading && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+            {unit.reading.title || 'Reading'}
+          </h2>
+          <p style={{ lineHeight: 1.7, marginBottom: 8 }}>{unit.reading.en}</p>
+          {unit.reading.zh ? (
+            <p style={{ lineHeight: 1.7, color: '#6b7280' }}>{unit.reading.zh}</p>
+          ) : null}
+        </section>
+      )}
 
-// 注意：Next 15 要求 params 也要 await
-export default async function Page({ params }: { params: Promise<Params> }) {
-  const baseUrl = await buildBaseUrl();
-  const p = await params; // ← 重要
-  const data = await fetchUnit(baseUrl, p);
+      {/* 練習段落（若有） */}
+      {unit.exercise && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+            {unit.exercise.title || 'Exercise'}
+          </h2>
+          <p style={{ lineHeight: 1.7, marginBottom: 8 }}>{unit.exercise.en}</p>
+          {unit.exercise.zh ? (
+            <p style={{ lineHeight: 1.7, color: '#6b7280' }}>{unit.exercise.zh}</p>
+          ) : null}
+        </section>
+      )}
 
-  return (
-    <main style={{ maxWidth: 900, margin: '0 auto', padding: 16 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 800 }}>{data.title}</h1>
-      {data.sections.length === 0 ? (
-        <p style={{ color: '#b91c1c', marginTop: 12 }}>
-          目前沒有可渲染的內容（sections 為空）。請檢查 unit.json 的欄位命名。
-        </p>
-      ) : (
-        data.sections.map((s: any, i: number) => (
-          <RenderSection key={i} s={s} imageBase={data.imageBase} />
-        ))
+      {/* 單字表 */}
+      {!!unit.vocabulary?.length && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Vocabulary</h2>
+          <ul style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, padding: 0, listStyle: 'none' }}>
+            {unit.vocabulary.map((v: any, i: number) => (
+              <li key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{v.word}</div>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{v.translation}</div>
+                {!!v.examples?.length && (
+                  <ul style={{ paddingLeft: 16, margin: 0 }}>
+                    {v.examples.map((ex: any, j: number) => (
+                      <li key={j} style={{ marginBottom: 4 }}>
+                        <span>{ex.en}</span>
+                        {ex.zh ? <span style={{ color: '#6b7280', marginLeft: 6 }}>（{ex.zh}）</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* 圖片（如果有需要顯示） */}
+      {!!unit.images?.length && (
+        <section>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Images</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            {unit.images.map((src: string, i: number) => (
+              <div key={i} style={{ position: 'relative', width: '100%', aspectRatio: '4/3', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                <Image src={src} alt={`image-${i + 1}`} fill style={{ objectFit: 'cover' }} />
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </main>
   );
