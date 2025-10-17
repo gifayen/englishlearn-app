@@ -1,10 +1,23 @@
-# 請直接複製貼上
+# Build & deps
 node_modules/
 .next/
 snapshots/
+
+# Local env
 .env.local
-.env.local # 避免把金鑰傳上去
-.vercel
+.env.*        # 若只想保留 .env.production 也可改成更嚴格
+
+# Vercel
+.vercel/
+
+# Drafts (你自己的草稿區)
 content-drafts/
+
+# macOS cruft
 .DS_Store
-public/.DS_Store
+**/.DS_Store
+**/__MACOSX
+
+# (可選) IDE
+.vscode/
+.idea/
