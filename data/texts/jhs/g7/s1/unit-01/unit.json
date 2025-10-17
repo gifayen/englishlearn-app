@@ -547,6 +547,10 @@
   ],
   "text": [],
   "reading": []
-}
+  },
+  "imagesByDialogue": {
+  "dialogue_a": ["/pics-reader/.../dialog-01.png"],
+  "dialogue_b": ["/pics-reader/.../dialog-02.png"]
+  }
 }
 
