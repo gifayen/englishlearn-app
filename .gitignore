@@ -5,3 +5,6 @@ snapshots/
 .env.local
 .env.local # 避免把金鑰傳上去
 .vercel
+content-drafts/
+.DS_Store
+public/.DS_Store
