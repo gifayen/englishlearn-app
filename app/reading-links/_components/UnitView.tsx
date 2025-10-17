@@ -142,12 +142,12 @@ function wholeTokenRegex(safe: string) { return new RegExp(`(?<![A-Za-z0-9])${sa
 
 function HoverToken({
   text,
-  tipLines,
-  onSpeak,
+  vocab,
+  rate,
 }: {
   text: string;
-  tipLines: string[];
-  onSpeak?: () => void;
+  vocab?: NonNullable<UnitData['vocabulary']>[number];
+  rate: number;
 }) {
   const [show, setShow] = useState(false);
   const [place, setPlace] = useState<'above' | 'below'>('below');
@@ -157,10 +157,12 @@ function HoverToken({
     if (!show || !wrapRef.current) return;
     const rect = wrapRef.current.getBoundingClientRect();
     const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    // 估計高度：標題 + 例句（每句 ~ 36px）
+    const exLen = vocab?.examples?.length ?? 0;
+    const estimatedHeight = Math.min(420, 60 + exLen * 36);
     const spaceBelow = viewportH - rect.bottom;
-    const estimatedHeight = Math.min(360, 40 + tipLines.length * 18);
     setPlace(spaceBelow < estimatedHeight + 16 ? 'above' : 'below');
-  }, [show, tipLines.length]);
+  }, [show, vocab?.examples?.length]);
 
   return (
     <span
@@ -179,8 +181,8 @@ function HoverToken({
             position: 'absolute',
             left: 0,
             zIndex: 50,
-            minWidth: 260,
-            maxWidth: 380,
+            minWidth: 280,
+            maxWidth: 420,
             background: '#fff',
             border: `1px solid ${palette.border}`,
             borderRadius: 10,
@@ -194,37 +196,73 @@ function HoverToken({
             bottom: place === 'above' ? '1.6em' : undefined,
           }}
         >
+          {/* 標題列：單字 + 詞性 + KK + 單字🔊 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <strong>{tipLines[0]}</strong>
-            {onSpeak ? (
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSpeak(); }}
-                aria-label="發音"
-                title="發音"
-                style={{
-                  marginLeft: 'auto',
-                  border: `1px solid ${palette.border}`,
-                  background: '#fff',
-                  borderRadius: 8,
-                  padding: '4px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                🔊
-              </button>
-            ) : null}
+            <strong>
+              {vocab?.word ? `【${vocab.word}】` : `【${text}】`}
+              {vocab?.pos ? ` · ${vocab.pos}` : ''}
+              {vocab?.kk ? ` · ${vocab.kk}` : ''}
+            </strong>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); speakOnce(vocab?.word || text, rate); }}
+              aria-label="發音"
+              title="發音"
+              style={{
+                marginLeft: 'auto',
+                border: `1px solid ${palette.border}`,
+                background: '#fff',
+                borderRadius: 8,
+                padding: '4px 6px',
+                cursor: 'pointer',
+              }}
+            >
+              🔊
+            </button>
           </div>
-          {tipLines.slice(1).filter(Boolean).map((l, i) => (
-            <div key={i} style={{ color: palette.sub }}>{l}</div>
-          ))}
+
+          {/* 意思 */}
+          {vocab?.translation ? (
+            <div style={{ color: palette.sub, marginBottom: 6 }}>意思：{vocab.translation}</div>
+          ) : null}
+
+          {/* 例句（每句都有 🔊） */}
+          {vocab?.examples?.length ? (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {vocab.examples.slice(0, 4).map((ex, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <div>{ex.en}</div>
+                    {ex.zh ? <div style={{ color: palette.sub }}>{ex.zh}</div> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); speakOnce(ex.en, rate); }}
+                    aria-label="朗讀例句"
+                    title="朗讀例句"
+                    style={{
+                      border: `1px solid ${palette.border}`,
+                      background: '#fff',
+                      borderRadius: 8,
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      alignSelf: 'center',
+                    }}
+                  >
+                    🔊
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </span>
   );
 }
 
-/** 只加字卡（不附每句 🔊 按鈕），用於「整段」模式的段落內文 */
+/** 在「整段」模式中，把段落文字加上詞彙 hover 字卡（含例句🔊） */
 function decorateInline(
   text: string,
   dict: Map<string, UnitData['vocabulary'][number]>,
@@ -255,23 +293,12 @@ function decorateInline(
   for (const m of nonOverlap) {
     if (m.start > cursor) nodes.push(text.slice(cursor, m.start));
     const v = m.info;
-    const lines: string[] = [];
-    if (v?.word) lines.push(`【${v.word}】${v.pos ? ` · ${v.pos}` : ''}${v.kk ? ` · ${v.kk}` : ''}`);
-    if (v?.translation) lines.push(`意思：${v.translation}`);
-    if (v?.examples?.[0]) {
-      const ex = v.examples[0];
-      lines.push(`例句：${ex.en}${ex.zh ? ` / ${ex.zh}` : ''}`);
-    }
-    if (v?.examples?.[1]) {
-      const ex2 = v.examples[1];
-      lines.push(`例句2：${ex2.en}${ex2.zh ? ` / ${ex2.zh}` : ''}`);
-    }
     nodes.push(
       <HoverToken
         key={`${m.start}-${m.end}-${m.text}`}
         text={m.text}
-        tipLines={lines}
-        onSpeak={() => speakOnce(v?.word || m.text, rate)}
+        vocab={v}
+        rate={rate}
       />
     );
     cursor = m.end;
@@ -663,7 +690,7 @@ export default function UnitView({ data }: Props) {
         </section>
       )}
 
-      {/* 課文（Text）— 加入檢視模式切換 */}
+      {/* 課文（Text）— 逐句 / 整段 */}
       {data.reading && (
         <section id="text" style={{ display: 'grid', gap: 12 }}>
           <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -682,77 +709,81 @@ export default function UnitView({ data }: Props) {
           <div style={card()}>
             <div style={cardHeader()}>{data.reading.title ?? 'Text'}</div>
             <div style={{ padding: '12px 14px', display: 'grid', gap: 14 }}>
-              {textMode === 'sentence' ? (
-                /* 逐句顯示 */
-                textParasSentences.map((sentences, idx) => (
-                  <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                      <button
-                        type="button"
-                        onClick={() => speakQueue(sentences, speechRate)}
-                        style={pillBtn()}
-                        title="朗讀本段英文"
-                      >
-                        ▶︎ 朗讀本段
-                      </button>
-                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+              {(() => {
+                const paras = normalizeParas(data.reading?.en);
+                const parasSent = paras.map(splitIntoSentences);
+                return textMode === 'sentence' ? (
+                  /* 逐句顯示 */
+                  parasSent.map((sentences, idx) => (
+                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
+                        <button
+                          type="button"
+                          onClick={() => speakQueue(sentences, speechRate)}
+                          style={pillBtn()}
+                          title="朗讀本段英文"
+                        >
+                          ▶︎ 朗讀本段
+                        </button>
+                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                      </div>
+                      <p style={{ margin: 0, lineHeight: 1.85 }}>
+                        {sentences.map((s, j) => (
+                          <React.Fragment key={j}>
+                            <Line text={s} />{' '}
+                          </React.Fragment>
+                        ))}
+                      </p>
+                      {txtShow && data.reading?.zh ? (
+                        Array.isArray(data.reading.zh) ? (
+                          data.reading.zh[idx] ? (
+                            <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
+                          ) : null
+                        ) : (
+                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
+                        )
+                      ) : null}
                     </div>
-                    <p style={{ margin: 0, lineHeight: 1.85 }}>
-                      {sentences.map((s, j) => (
-                        <React.Fragment key={j}>
-                          <Line text={s} />{' '}
-                        </React.Fragment>
-                      ))}
-                    </p>
-                    {txtShow && data.reading?.zh ? (
-                      Array.isArray(data.reading.zh) ? (
-                        data.reading.zh[idx] ? (
-                          <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
-                        ) : null
-                      ) : (
-                        idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
-                      )
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                /* 整段顯示 */
-                normalizeParas(data.reading.en).map((para, idx) => (
-                  <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                      <button
-                        type="button"
-                        onClick={() => speakOnce(para, speechRate)}
-                        style={pillBtn()}
-                        title="朗讀本段英文"
-                      >
-                        ▶︎ 朗讀本段
-                      </button>
-                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                  ))
+                ) : (
+                  /* 整段顯示（內文字卡含例句🔊） */
+                  paras.map((para, idx) => (
+                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
+                        <button
+                          type="button"
+                          onClick={() => speakOnce(para, speechRate)}
+                          style={pillBtn()}
+                          title="朗讀本段英文"
+                        >
+                          ▶︎ 朗讀本段
+                        </button>
+                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                      </div>
+                      <p style={{ margin: 0, lineHeight: 1.85 }}>
+                        {decorateInline(para, dict, speechRate)}
+                      </p>
+                      {txtShow && data.reading?.zh ? (
+                        Array.isArray(data.reading.zh) ? (
+                          data.reading.zh[idx] ? (
+                            <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
+                          ) : null
+                        ) : (
+                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
+                        )
+                      ) : null}
                     </div>
-                    <p style={{ margin: 0, lineHeight: 1.85 }}>
-                      {decorateInline(para, dict, speechRate)}
-                    </p>
-                    {txtShow && data.reading?.zh ? (
-                      Array.isArray(data.reading.zh) ? (
-                        data.reading.zh[idx] ? (
-                          <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh[idx]}</p>
-                        ) : null
-                      ) : (
-                        idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.reading.zh}</p> : null
-                      )
-                    ) : null}
-                  </div>
-                ))
-              )}
+                  ))
+                );
+              })()}
             </div>
           </div>
         </section>
       )}
 
-      {/* 閱讀（Reading）— 加入檢視模式切換（沿用 exercise） */}
+      {/* 閱讀（Reading）— 逐句 / 整段（沿用 exercise） */}
       {data.exercise && (
         <section id="reading" style={{ display: 'grid', gap: 12 }}>
           <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -771,69 +802,73 @@ export default function UnitView({ data }: Props) {
           <div style={card()}>
             <div style={cardHeader()}>{data.exercise.title ?? 'Reading'}</div>
             <div style={{ padding: '12px 14px', display: 'grid', gap: 14 }}>
-              {readingMode === 'sentence' ? (
-                readingParasSentences.map((sentences, idx) => (
-                  <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                      <button
-                        type="button"
-                        onClick={() => speakQueue(sentences, speechRate)}
-                        style={pillBtn()}
-                        title="朗讀本段英文"
-                      >
-                        ▶︎ 朗讀本段
-                      </button>
-                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+              {(() => {
+                const paras = normalizeParas(data.exercise?.en);
+                const parasSent = paras.map(splitIntoSentences);
+                return readingMode === 'sentence' ? (
+                  parasSent.map((sentences, idx) => (
+                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
+                        <button
+                          type="button"
+                          onClick={() => speakQueue(sentences, speechRate)}
+                          style={pillBtn()}
+                          title="朗讀本段英文"
+                        >
+                          ▶︎ 朗讀本段
+                        </button>
+                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                      </div>
+                      <p style={{ margin: 0, lineHeight: 1.85 }}>
+                        {sentences.map((s, j) => (
+                          <React.Fragment key={j}>
+                            <Line text={s} />{' '}
+                          </React.Fragment>
+                        ))}
+                      </p>
+                      {readShow && data.exercise?.zh ? (
+                        Array.isArray(data.exercise.zh) ? (
+                          data.exercise.zh[idx] ? (
+                            <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
+                          ) : null
+                        ) : (
+                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
+                        )
+                      ) : null}
                     </div>
-                    <p style={{ margin: 0, lineHeight: 1.85 }}>
-                      {sentences.map((s, j) => (
-                        <React.Fragment key={j}>
-                          <Line text={s} />{' '}
-                        </React.Fragment>
-                      ))}
-                    </p>
-                    {readShow && data.exercise?.zh ? (
-                      Array.isArray(data.exercise.zh) ? (
-                        data.exercise.zh[idx] ? (
-                          <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
-                        ) : null
-                      ) : (
-                        idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
-                      )
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                normalizeParas(data.exercise.en).map((para, idx) => (
-                  <div key={idx} style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
-                      <button
-                        type="button"
-                        onClick={() => speakOnce(para, speechRate)}
-                        style={pillBtn()}
-                        title="朗讀本段英文"
-                      >
-                        ▶︎ 朗讀本段
-                      </button>
-                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                  ))
+                ) : (
+                  paras.map((para, idx) => (
+                    <div key={idx} style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <b style={{ color: palette.sub }}>段落 {idx + 1}</b>
+                        <button
+                          type="button"
+                          onClick={() => speakOnce(para, speechRate)}
+                          style={pillBtn()}
+                          title="朗讀本段英文"
+                        >
+                          ▶︎ 朗讀本段
+                        </button>
+                        <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">⏹</button>
+                      </div>
+                      <p style={{ margin: 0, lineHeight: 1.85 }}>
+                        {decorateInline(para, dict, speechRate)}
+                      </p>
+                      {readShow && data.exercise?.zh ? (
+                        Array.isArray(data.exercise.zh) ? (
+                          data.exercise.zh[idx] ? (
+                            <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
+                          ) : null
+                        ) : (
+                          idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
+                        )
+                      ) : null}
                     </div>
-                    <p style={{ margin: 0, lineHeight: 1.85 }}>
-                      {decorateInline(para, dict, speechRate)}
-                    </p>
-                    {readShow && data.exercise?.zh ? (
-                      Array.isArray(data.exercise.zh) ? (
-                        data.exercise.zh[idx] ? (
-                          <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh[idx]}</p>
-                        ) : null
-                      ) : (
-                        idx === 0 ? <p style={{ color: palette.sub, margin: 0 }}>{data.exercise.zh}</p> : null
-                      )
-                    ) : null}
-                  </div>
-                ))
-              )}
+                  ))
+                );
+              })()}
             </div>
           </div>
         </section>
