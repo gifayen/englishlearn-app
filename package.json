@@ -7,11 +7,13 @@
   },
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "npm run img:optimize && next build --turbopack",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
     "test": "vitest",
-    "test:update": "vitest -u"
+    "test:update": "vitest -u",
+    "img:optimize": "node scripts/optimize-images.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -33,7 +35,9 @@
     "@vitejs/plugin-react": "^5.0.3",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
+    "fast-glob": "^3.3.3",
     "jsdom": "^27.0.0",
+    "sharp": "^0.34.4",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"
