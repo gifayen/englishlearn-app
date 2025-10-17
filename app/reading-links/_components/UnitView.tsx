@@ -36,14 +36,15 @@ const palette = {
 function pillLink(): React.CSSProperties {
   return {
     display: 'inline-block',
-    padding: '6px 10px',
+    padding: '8px 12px',
     border: `1px solid ${palette.border}`,
     borderRadius: 9999,
     background: palette.pillBg,
     textDecoration: 'none',
     color: palette.text,
-    fontSize: 14,
+    fontSize: 16,
     lineHeight: 1,
+    fontWeight: 600,
   };
 }
 function pillBtn(): React.CSSProperties {
@@ -58,7 +59,6 @@ function card(): React.CSSProperties {
     background: palette.cardBg,
     border: `1px solid ${palette.border}`,
     borderRadius: 12,
-    // 讓懸浮字卡可以超出卡片邊界顯示
     overflow: 'visible',
   };
 }
@@ -75,10 +75,47 @@ function cardHeader(): React.CSSProperties {
   };
 }
 function h2(): React.CSSProperties {
-  return { fontSize: 26, fontWeight: 900, margin: '4px 0' };
+  return { fontSize: 28, fontWeight: 900, margin: '4px 0' };
 }
 
-/* ---------- 字詞標註工具 ---------- */
+/* ---------- TTS 工具 ---------- */
+function stopSpeak() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+}
+function speakOnce(text: string, rate: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    stopSpeak();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = rate; // 0.8–1.2
+    window.speechSynthesis.speak(u);
+  } catch {}
+}
+function speakQueue(texts: string[], rate: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    stopSpeak();
+    let i = 0;
+    const next = () => {
+      if (i >= texts.length) return;
+      const t = (texts[i] || '').trim();
+      i++;
+      if (!t) return next();
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = 'en-US';
+      u.rate = rate;
+      u.onend = () => next();
+      window.speechSynthesis.speak(u);
+    };
+    next();
+  } catch {}
+}
+
+/* ---------- 字詞標註工具（含字卡） ---------- */
 function toKeyToken(raw: string) {
   return (raw || '').toLowerCase().trim();
 }
@@ -86,13 +123,14 @@ function wholeTokenRegex(safe: string) {
   return new RegExp(`(?<![A-Za-z0-9])${safe}(?![A-Za-z0-9])`, 'gi');
 }
 
-/* 懸浮卡片：偵測視窗空間，必要時往上翻 */
 function HoverToken({
   text,
   tipLines,
+  onSpeak,
 }: {
   text: string;
   tipLines: string[];
+  onSpeak?: () => void;
 }) {
   const [show, setShow] = useState(false);
   const [place, setPlace] = useState<'above' | 'below'>('below');
@@ -103,7 +141,7 @@ function HoverToken({
     const rect = wrapRef.current.getBoundingClientRect();
     const viewportH = window.innerHeight || document.documentElement.clientHeight;
     const spaceBelow = viewportH - rect.bottom;
-    const estimatedHeight = Math.min(320, 24 + tipLines.length * 18);
+    const estimatedHeight = Math.min(360, 40 + tipLines.length * 18);
     setPlace(spaceBelow < estimatedHeight + 16 ? 'above' : 'below');
   }, [show, tipLines.length]);
 
@@ -126,12 +164,14 @@ function HoverToken({
       {show && (
         <div
           role="tooltip"
+          onMouseEnter={() => setShow(true)}
+          onMouseLeave={() => setShow(false)}
           style={{
             position: 'absolute',
             left: 0,
             zIndex: 50,
-            minWidth: 240,
-            maxWidth: 360,
+            minWidth: 260,
+            maxWidth: 380,
             background: '#fff',
             border: `1px solid ${palette.border}`,
             borderRadius: 10,
@@ -139,16 +179,39 @@ function HoverToken({
             padding: '10px 12px',
             fontSize: 13,
             color: palette.text,
-            lineHeight: 1.5,
+            lineHeight: 1.55,
             whiteSpace: 'pre-wrap',
             top: place === 'below' ? '1.6em' : undefined,
             bottom: place === 'above' ? '1.6em' : undefined,
           }}
         >
-          {tipLines.filter(Boolean).map((l, i) => (
-            <div key={i} style={{ color: i === 0 ? palette.text : palette.sub }}>
-              {l}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <strong>{tipLines[0]}</strong>
+            {onSpeak ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSpeak();
+                }}
+                aria-label="發音"
+                title="發音"
+                style={{
+                  marginLeft: 'auto',
+                  border: `1px solid ${palette.border}`,
+                  background: '#fff',
+                  borderRadius: 8,
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                }}
+              >
+                🔊
+              </button>
+            ) : null}
+          </div>
+          {tipLines.slice(1).filter(Boolean).map((l, i) => (
+            <div key={i} style={{ color: palette.sub }}>{l}</div>
           ))}
         </div>
       )}
@@ -156,10 +219,11 @@ function HoverToken({
   );
 }
 
-/** 將一句英文加上「小卡片懸浮提示」標註 */
+/** 將一句英文加上「小卡片懸浮提示」標註（含字卡🔊） */
 function decorateSentence(
   sentence: string,
-  dict: Map<string, UnitData['vocabulary'][number]>
+  dict: Map<string, UnitData['vocabulary'][number]>,
+  rate: number
 ) {
   if (!sentence) return sentence;
 
@@ -195,25 +259,26 @@ function decorateSentence(
 
   for (const m of nonOverlap) {
     if (m.start > cursor) nodes.push(sentence.slice(cursor, m.start));
+    const v = m.info;
     const lines: string[] = [];
-    if (m.info?.word)
-      lines.push(
-        `【${m.info.word}】${m.info.pos ? ` · ${m.info.pos}` : ''}${
-          m.info.kk ? ` · ${m.info.kk}` : ''
-        }`
-      );
-    if (m.info?.translation) lines.push(`意思：${m.info.translation}`);
-    if (m.info?.examples?.[0]) {
-      const ex = m.info.examples[0];
+    if (v?.word) lines.push(`【${v.word}】${v.pos ? ` · ${v.pos}` : ''}${v.kk ? ` · ${v.kk}` : ''}`);
+    if (v?.translation) lines.push(`意思：${v.translation}`);
+    if (v?.examples?.[0]) {
+      const ex = v.examples[0];
       lines.push(`例句：${ex.en}${ex.zh ? ` / ${ex.zh}` : ''}`);
     }
-    if (m.info?.examples?.[1]) {
-      const ex2 = m.info.examples[1];
+    if (v?.examples?.[1]) {
+      const ex2 = v.examples[1];
       lines.push(`例句2：${ex2.en}${ex2.zh ? ` / ${ex2.zh}` : ''}`);
     }
 
     nodes.push(
-      <HoverToken key={`${m.start}-${m.end}-${m.text}`} text={m.text} tipLines={lines} />
+      <HoverToken
+        key={`${m.start}-${m.end}-${m.text}`}
+        text={m.text}
+        tipLines={lines}
+        onSpeak={() => speakOnce(v?.word || m.text, rate)}
+      />
     );
     cursor = m.end;
   }
@@ -224,9 +289,10 @@ function decorateSentence(
 export default function UnitView({ data }: Props) {
   // 全域控制
   const [showZhAll, setShowZhAll] = useState(true);
-  const [imgWidth, setImgWidth] = useState(400); // 200–400
+  const [imgWidth, setImgWidth] = useState(300); // 200–400
+  const [speechRate, setSpeechRate] = useState(0.9); // 0.8–1.2
 
-  // 區域控制（可獨立於全域）
+  // 區域控制
   const [showZhDialogues, setShowZhDialogues] = useState<boolean | null>(null);
   const [showZhText, setShowZhText] = useState<boolean | null>(null);
   const [showZhReading, setShowZhReading] = useState<boolean | null>(null);
@@ -236,6 +302,19 @@ export default function UnitView({ data }: Props) {
   const txtShow = showZhText ?? showZhAll;
   const readShow = showZhReading ?? showZhAll;
   const vocabShow = showZhVocab ?? showZhAll;
+
+  // 對話逐段中文顯示切換
+  const dialogueKeys = useMemo(() => Object.keys(data.dialogues ?? {}), [data.dialogues]);
+  const [dialogZhMap, setDialogZhMap] = useState<Record<string, boolean | null>>({});
+  useEffect(() => {
+    setDialogZhMap((prev) => {
+      const next = { ...prev };
+      dialogueKeys.forEach((k) => {
+        if (!(k in next)) next[k] = null;
+      });
+      return next;
+    });
+  }, [dialogueKeys]);
 
   // 詞彙字典
   const dict = useMemo(() => {
@@ -266,21 +345,51 @@ export default function UnitView({ data }: Props) {
         v.translation?.toLowerCase() ?? '',
         v.pos?.toLowerCase() ?? '',
         (v.kk ?? '').toLowerCase(),
-        ...(v.examples ?? []).flatMap((e) => [
-          e.en.toLowerCase(),
-          (e.zh ?? '').toLowerCase(),
-        ]),
+        ...(v.examples ?? []).flatMap((e) => [e.en.toLowerCase(), (e.zh ?? '').toLowerCase()]),
       ].join(' ');
       return passPos && bucket.includes(q);
     });
   }, [data.vocabulary, vocabQuery, vocabPos]);
 
   const Line = ({ text }: { text: string }) => {
-    const nodes = useMemo(() => decorateSentence(text, dict), [text, dict]);
-    return <span>{nodes}</span>;
+    // 懸浮字卡（單字）標註
+    const nodes = useMemo(() => decorateSentence(text, dict, speechRate), [text, dict, speechRate]);
+    // 控制句子 hover 顯示 🔊
+    const [hover, setHover] = useState(false);
+
+    return (
+      <span
+        style={{ position: 'relative', paddingRight: 28 }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      >
+        <span>{nodes}</span>
+        {hover && (
+          <button
+            type="button"
+            title="朗讀此句"
+            aria-label="朗讀此句"
+            onClick={() => speakOnce(text, speechRate)}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: -2,
+              border: `1px solid ${palette.border}`,
+              background: '#fff',
+              borderRadius: 8,
+              padding: '2px 6px',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            🔊
+          </button>
+        )}
+      </span>
+    );
   };
 
-  // 共用：每個主體右側按鈕群
+  // 共用：每個主體右側按鈕群（含「本區顯示中文」與章節跳轉）
   function SectionButtons({
     showZh,
     setShowZh,
@@ -291,13 +400,13 @@ export default function UnitView({ data }: Props) {
     selfId: 'dialogues' | 'text' | 'reading' | 'exercise' | 'vocabulary';
   }) {
     const others: { id: string; label: string }[] = [];
-    if (selfId !== 'dialogues' && data.dialogues) others.push({ id: 'dialogues', label: 'Dialog' });
+    if (selfId !== 'dialogues' && data.dialogues) others.push({ id: 'dialogues', label: 'Dialogue' });
     if (selfId !== 'text' && data.reading) others.push({ id: 'text', label: 'Text' });
     if (selfId !== 'reading' && data.exercise) others.push({ id: 'reading', label: 'Reading' });
     if (selfId !== 'vocabulary' && data.vocabulary?.length) others.push({ id: 'vocabulary', label: 'Vocabulary' });
 
     return (
-      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {others.map((o) => (
           <a key={o.id} href={`#${o.id}`} style={pillLink()}>
             {o.label}
@@ -305,19 +414,27 @@ export default function UnitView({ data }: Props) {
         ))}
         <label style={{ ...pillBtn(), border: 'none', padding: 0 }}>
           <span style={{ marginRight: 6, color: palette.sub }}>本區顯示中文</span>
-          <input
-            type="checkbox"
-            checked={showZh}
-            onChange={(e) => setShowZh(e.target.checked)}
-          />
+          <input type="checkbox" checked={showZh} onChange={(e) => setShowZh(e.target.checked)} />
         </label>
       </div>
     );
   }
 
+  // 收集各區英文內容，供「本區朗讀」與「全部朗讀」
+  const dialogueAllTexts = useMemo(() => {
+    const out: string[] = [];
+    Object.values(data.dialogues ?? {}).forEach((lines) =>
+      lines.forEach((l) => out.push(`${l.speaker}: ${l.en}`))
+    );
+    return out;
+  }, [data.dialogues]);
+  const textTexts = useMemo(() => (data.reading?.en ? [data.reading.en] : []), [data.reading]);
+  const readingTexts = useMemo(() => (data.exercise?.en ? [data.exercise.en] : []), [data.exercise]);
+  const allTexts = useMemo(() => [...dialogueAllTexts, ...textTexts, ...readingTexts], [dialogueAllTexts, textTexts, readingTexts]);
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {/* 頂部章節導覽 + 全域控制 */}
+      {/* 頂部章節導覽 + 全域控制 + 全域朗讀 */}
       <nav
         aria-label="單元章節導覽"
         style={{
@@ -330,20 +447,17 @@ export default function UnitView({ data }: Props) {
           padding: 10,
         }}
       >
-        {data.dialogues ? <a href="#dialogues" style={pillLink()}>Dialog</a> : null}
+        {data.dialogues ? <a href="#dialogues" style={pillLink()}>Dialogue</a> : null}
         {data.reading ? <a href="#text" style={pillLink()}>Text</a> : null}
         {data.exercise ? <a href="#reading" style={pillLink()}>Reading</a> : null}
         {data.vocabulary?.length ? <a href="#vocabulary" style={pillLink()}>Vocabulary</a> : null}
 
-        <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={showZhAll}
-              onChange={(e) => setShowZhAll(e.target.checked)}
-            />
+            <input type="checkbox" checked={showZhAll} onChange={(e) => setShowZhAll(e.target.checked)} />
             全部顯示中文
           </label>
+
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span style={{ color: palette.sub }}>圖片寬度</span>
             <input
@@ -356,6 +470,32 @@ export default function UnitView({ data }: Props) {
             />
             <span style={{ width: 44, textAlign: 'right', color: palette.sub }}>{imgWidth}px</span>
           </div>
+
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: palette.sub }}>語速</span>
+            <input
+              type="range"
+              min={0.8}
+              max={1.2}
+              step={0.05}
+              value={speechRate}
+              onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+            />
+            <span style={{ width: 42, textAlign: 'right', color: palette.sub }}>{speechRate.toFixed(2)}×</span>
+          </div>
+
+          {/* 全域朗讀控制 */}
+          <button
+            type="button"
+            onClick={() => speakQueue(allTexts, speechRate)}
+            style={pillBtn()}
+            title="按順序朗讀對話、課文與閱讀"
+          >
+            ▶︎ 全部朗讀（英）
+          </button>
+          <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+            ⏹ 停止
+          </button>
         </div>
       </nav>
 
@@ -366,11 +506,7 @@ export default function UnitView({ data }: Props) {
             <div style={card()}>
               <div style={cardHeader()}>
                 <span>Dialog (Images)</span>
-                <SectionButtons
-                  showZh={dlgShow}
-                  setShowZh={(v) => setShowZhDialogues(v)}
-                  selfId="dialogues"
-                />
+                <SectionButtons showZh={dlgShow} setShowZh={(v) => setShowZhDialogues(v)} selfId="dialogues" />
               </div>
               <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
                 {data.images.dialogue.map((src, i) => (
@@ -396,11 +532,7 @@ export default function UnitView({ data }: Props) {
             <div style={card()}>
               <div style={cardHeader()}>
                 <span>Text (Images)</span>
-                <SectionButtons
-                  showZh={txtShow}
-                  setShowZh={(v) => setShowZhText(v)}
-                  selfId="text"
-                />
+                <SectionButtons showZh={txtShow} setShowZh={(v) => setShowZhText(v)} selfId="text" />
               </div>
               <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
                 {data.images.text.map((src, i) => (
@@ -426,11 +558,7 @@ export default function UnitView({ data }: Props) {
             <div style={card()}>
               <div style={cardHeader()}>
                 <span>Reading (Images)</span>
-                <SectionButtons
-                  showZh={readShow}
-                  setShowZh={(v) => setShowZhReading(v)}
-                  selfId="reading"
-                />
+                <SectionButtons showZh={readShow} setShowZh={(v) => setShowZhReading(v)} selfId="reading" />
               </div>
               <div style={{ display: 'grid', gap: 8, placeItems: 'start', padding: 12 }}>
                 {data.images.reading.map((src, i) => (
@@ -457,32 +585,67 @@ export default function UnitView({ data }: Props) {
       {/* 對話 */}
       {data.dialogues && (
         <section id="dialogues" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center' }}>
-            <span>Dialog</span>
-            <SectionButtons
-              showZh={dlgShow}
-              setShowZh={(v) => setShowZhDialogues(v)}
-              selfId="dialogues"
-            />
+          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>Dialogue</span>
+            {/* 本區朗讀 */}
+            <button
+              type="button"
+              onClick={() => speakQueue(dialogueAllTexts, speechRate)}
+              style={pillBtn()}
+              title="朗讀本區所有英文"
+            >
+              ▶︎ 朗讀本區
+            </button>
+            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+              ⏹ 停止
+            </button>
+
+            <SectionButtons showZh={dlgShow} setShowZh={(v) => setShowZhDialogues(v)} selfId="dialogues" />
           </div>
+
           <div style={{ display: 'grid', gap: 12 }}>
-            {Object.entries(data.dialogues).map(([key, lines]) => (
-              <div key={key} style={card()}>
-                <div style={cardHeader()}>{key.toUpperCase()}</div>
-                <div style={{ display: 'grid', gap: 8, padding: '12px 14px' }}>
-                  {lines.map((ln, i) => (
-                    <div key={i} style={{ display: 'grid', gap: 2, lineHeight: 1.7 }}>
-                      <div>
-                        <b>{ln.speaker}</b>: <Line text={ln.en} />
-                      </div>
-                      {dlgShow && ln.zh ? (
-                        <div style={{ color: palette.sub }}>{ln.zh}</div>
-                      ) : null}
+            {Object.entries(data.dialogues).map(([key, lines]) => {
+              const thisShow = (dialogZhMap[key] ?? null) ?? dlgShow;
+              return (
+                <div key={key} style={card()}>
+                  <div style={{ ...cardHeader(), gap: 10 }}>
+                    <span>{key.toUpperCase()}</span>
+                    <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => speakQueue(lines.map((l) => `${l.speaker}: ${l.en}`), speechRate)}
+                        style={pillBtn()}
+                        title="朗讀本對話"
+                      >
+                        ▶︎ 本對話朗讀
+                      </button>
+                      <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+                        ⏹
+                      </button>
+                      <label style={{ color: palette.sub }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(thisShow)}
+                          onChange={(e) => setDialogZhMap((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          style={{ marginRight: 6 }}
+                        />
+                        本對話顯示中文
+                      </label>
                     </div>
-                  ))}
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, padding: '12px 14px' }}>
+                    {lines.map((ln, i) => (
+                      <div key={i} style={{ display: 'grid', gap: 2, lineHeight: 1.7 }}>
+                        <div>
+                          <b>{ln.speaker}</b>: <Line text={ln.en} />
+                        </div>
+                        {thisShow && ln.zh ? <div style={{ color: palette.sub }}>{ln.zh}</div> : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -490,13 +653,20 @@ export default function UnitView({ data }: Props) {
       {/* 課文（Text） */}
       {data.reading && (
         <section id="text" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center' }}>
+          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>Text</span>
-            <SectionButtons
-              showZh={txtShow}
-              setShowZh={(v) => setShowZhText(v)}
-              selfId="text"
-            />
+            <button
+              type="button"
+              onClick={() => speakQueue(textTexts, speechRate)}
+              style={pillBtn()}
+              title="朗讀本段英文"
+            >
+              ▶︎ 朗讀本區
+            </button>
+            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+              ⏹ 停止
+            </button>
+            <SectionButtons showZh={txtShow} setShowZh={(v) => setShowZhText(v)} selfId="text" />
           </div>
           <div style={card()}>
             <div style={cardHeader()}>{data.reading.title ?? 'Text'}</div>
@@ -504,9 +674,7 @@ export default function UnitView({ data }: Props) {
               <p style={{ margin: 0 }}>
                 <Line text={data.reading.en} />
               </p>
-              {txtShow && data.reading.zh ? (
-                <p style={{ color: palette.sub, marginTop: 6 }}>{data.reading.zh}</p>
-              ) : null}
+              {txtShow && data.reading.zh ? <p style={{ color: palette.sub, marginTop: 6 }}>{data.reading.zh}</p> : null}
             </div>
           </div>
         </section>
@@ -515,13 +683,20 @@ export default function UnitView({ data }: Props) {
       {/* 閱讀（Reading / 原 exercise） */}
       {data.exercise && (
         <section id="reading" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...h2(), display: 'flex', alignItems: 'center' }}>
+          <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>Reading</span>
-            <SectionButtons
-              showZh={readShow}
-              setShowZh={(v) => setShowZhReading(v)}
-              selfId="reading"
-            />
+            <button
+              type="button"
+              onClick={() => speakQueue(readingTexts, speechRate)}
+              style={pillBtn()}
+              title="朗讀本段英文"
+            >
+              ▶︎ 朗讀本區
+            </button>
+            <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+              ⏹ 停止
+            </button>
+            <SectionButtons showZh={readShow} setShowZh={(v) => setShowZhReading(v)} selfId="reading" />
           </div>
           <div style={card()}>
             <div style={cardHeader()}>{data.exercise.title ?? 'Reading'}</div>
@@ -542,60 +717,20 @@ export default function UnitView({ data }: Props) {
         <section id="vocabulary" style={{ display: 'grid', gap: 12 }}>
           <div style={{ ...h2(), display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>Vocabulary</span>
-            <SectionButtons
-              showZh={vocabShow}
-              setShowZh={(v) => setShowZhVocab(v)}
-              selfId="vocabulary"
-            />
+            <SectionButtons showZh={vocabShow} setShowZh={(v) => setShowZhVocab(v)} selfId="vocabulary" />
           </div>
 
           {/* 搜尋 & 詞性篩選 */}
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 8,
-              alignItems: 'center',
-              border: `1px solid ${palette.border}`,
-              borderRadius: 12,
-              padding: 10,
-              background: '#fff',
-            }}
-          >
-            <input
-              type="text"
-              placeholder="搜尋單字 / 中文 / 例句 / KK / 詞性…"
-              value={vocabQuery}
-              onChange={(e) => setVocabQuery(e.target.value)}
-              style={{
-                flex: '1 1 220px',
-                border: `1px solid ${palette.border}`,
-                borderRadius: 10,
-                padding: '8px 10px',
-                fontSize: 14,
-              }}
-            />
-            <select
-              value={vocabPos}
-              onChange={(e) => setVocabPos(e.target.value)}
-              style={{
-                border: `1px solid ${palette.border}`,
-                borderRadius: 10,
-                padding: '8px 10px',
-                fontSize: 14,
-                background: '#fff',
-              }}
-            >
-              <option value="all">全部詞性</option>
-              {posList.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
+          <VocabToolbar
+            vocab={data.vocabulary}
+            vocabShow={vocabShow}
+            speechRate={speechRate}
+            queryState={[vocabQuery, setVocabQuery]}
+            posState={[vocabPos, setVocabPos]}
+            posList={posList}
+          />
 
-          {/* 單字卡：字更大、更醒目；例句中文受 vocabShow 控制 */}
+          {/* 單字卡（含🔊） */}
           <div
             style={{
               display: 'grid',
@@ -609,10 +744,28 @@ export default function UnitView({ data }: Props) {
                   style={{
                     ...cardHeader(),
                     fontSize: 22,
-                    display: 'block',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                   }}
                 >
-                  {v.word}
+                  <span>{v.word}</span>
+                  <button
+                    type="button"
+                    onClick={() => speakOnce(v.word, speechRate)}
+                    aria-label={`發音 ${v.word}`}
+                    title="發音"
+                    style={{
+                      marginLeft: 'auto',
+                      border: `1px solid ${palette.border}`,
+                      background: '#fff',
+                      borderRadius: 8,
+                      padding: '4px 6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🔊
+                  </button>
                 </div>
                 <div style={{ padding: '10px 12px', display: 'grid', gap: 6 }}>
                   {v.translation ? (
@@ -638,9 +791,7 @@ export default function UnitView({ data }: Props) {
                       {v.examples.slice(0, 2).map((ex, j) => (
                         <div key={j}>
                           <div>{ex.en}</div>
-                          {vocabShow && ex.zh ? (
-                            <div style={{ color: palette.sub }}>{ex.zh}</div>
-                          ) : null}
+                          {vocabShow && ex.zh ? <div style={{ color: palette.sub }}>{ex.zh}</div> : null}
                         </div>
                       ))}
                     </div>
@@ -651,6 +802,104 @@ export default function UnitView({ data }: Props) {
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/* --- 小工具：Vocabulary 工具列抽出 --- */
+function VocabToolbar({
+  vocab,
+  vocabShow,
+  speechRate,
+  queryState,
+  posState,
+  posList,
+}: {
+  vocab?: UnitData['vocabulary'];
+  vocabShow: boolean;
+  speechRate: number;
+  queryState: [string, (v: string) => void];
+  posState: [string, (v: string) => void];
+  posList: string[];
+}) {
+  const [q, setQ] = queryState;
+  const [pos, setPos] = posState;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 8,
+        alignItems: 'center',
+        border: `1px solid ${palette.border}`,
+        borderRadius: 12,
+        padding: 10,
+        background: '#fff',
+      }}
+    >
+      <input
+        type="text"
+        placeholder="搜尋單字 / 中文 / 例句 / KK / 詞性…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        style={{
+          flex: '1 1 220px',
+          border: `1px solid ${palette.border}`,
+          borderRadius: 10,
+          padding: '8px 10px',
+          fontSize: 14,
+        }}
+      />
+      <select
+        value={pos}
+        onChange={(e) => setPos(e.target.value)}
+        style={{
+          border: `1px solid ${palette.border}`,
+          borderRadius: 10,
+          padding: '8px 10px',
+          fontSize: 14,
+          background: '#fff',
+        }}
+      >
+        <option value="all">全部詞性</option>
+        {posList.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+
+      {/* （可選）一鍵朗讀所有單字英文（字 + 例句） */}
+      {vocab?.length ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              speakQueue(
+                vocab.flatMap((v) => {
+                  const arr = [`${v.word}.`];
+                  if (v.examples?.[0]?.en) arr.push(v.examples[0].en);
+                  if (v.examples?.[1]?.en) arr.push(v.examples[1].en);
+                  return arr;
+                }),
+                speechRate
+              )
+            }
+            style={pillBtn()}
+            title="朗讀單字與例句（英文）"
+          >
+            ▶︎ 朗讀單字
+          </button>
+          <button type="button" onClick={stopSpeak} style={pillBtn()} title="停止朗讀">
+            ⏹
+          </button>
+        </>
+      ) : null}
+
+      <span style={{ color: palette.sub, marginLeft: 'auto' }}>
+        {vocabShow ? '顯示中文例句' : '隱藏中文例句'}
+      </span>
     </div>
   );
 }
