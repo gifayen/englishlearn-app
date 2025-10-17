@@ -9,14 +9,16 @@ function normalizePath(p: string) {
   return low.endsWith('/') ? low.slice(0, -1) : low
 }
 
-// ✅ 只放行「公開 API」：/api/public/* 與 /api/testimonials 的 GET（讀取用）
-//    但 POST/PUT/DELETE 等仍需登入，避免誤開權限
+// ✅ 只放行「公開 API」：/api/public/*、/api/testimonials 的 GET、/api/texts/*（讀取教材 JSON）
+//    但 /api/testimonials 的非 GET 仍需登入；/api/texts/* 內部會自行檢查 session 並回 401 JSON
 function isPublicApi(pathname: string, method: string) {
   if (pathname.startsWith('/api/public/')) return true
   if (pathname === '/api/testimonials' && method === 'GET') return true
   if (pathname.startsWith('/api/testimonials/') && method === 'GET') return true
   if (pathname === '/api/healthz') return true
   if (pathname === '/api/auth/callback') return true
+  // ⬇️ 新增：讓頁面 SSR/CSR 取教材時不被 middleware 攔下（實際權限由 API 內檢查）
+  if (pathname.startsWith('/api/texts/')) return true
   return false
 }
 

@@ -1,22 +1,38 @@
 // app/reading-links/[level]/[grade]/[sem]/[unit]/page.tsx
 export const dynamic = 'force-dynamic';
 
+import { headers } from 'next/headers';
+
 type Params = { level: string; grade: string; sem: string; unit: string };
 
-async function fetchUnit({ level, grade, sem, unit }: Params) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/texts/${level}/${grade}/${sem}/${unit}`,
-    { cache: 'no-store' }
-  ).catch(() => null);
+// 需要 await headers()
+async function buildBaseUrl() {
+  const h = await headers();
+  const host =
+    h.get('x-forwarded-host') ||
+    h.get('host') ||
+    'localhost:3000';
 
-  // 若有設定 NEXT_PUBLIC_BASE_URL 失敗，改用相對路徑（本地/伺服器皆可）
-  const res2 = res && res.ok ? res : await fetch(
-    `/api/texts/${level}/${grade}/${sem}/${unit}`,
-    { cache: 'no-store' }
-  );
+  const proto =
+    h.get('x-forwarded-proto') ||
+    (host.includes('localhost') || host.startsWith('192.') ? 'http' : 'https');
 
-  if (!res2.ok) throw new Error('fetch failed');
-  const data = await res2.json();
+  return `${proto}://${host}`;
+}
+
+async function fetchUnit(baseUrl: string, p: Params) {
+  const { level, grade, sem, unit } = p;
+  const url = `${baseUrl}/api/texts/${level}/${grade}/${sem}/${unit}`;
+  const res = await fetch(url, { cache: 'no-store' });
+
+  if (!res.ok) {
+    // 例如被 middleware 擋掉轉成 /login 的 HTML，就會不是 2xx
+    throw new Error(`fetch failed: ${res.status}`);
+  }
+
+  // 確保這裡拿到的是 JSON，而不是 HTML（若是 HTML，上一段通常已非 2xx）
+  const data = await res.json();
+
   return {
     title: data?.title ?? 'Untitled',
     imageBase: data?.meta?.imageBase ?? '',
@@ -53,7 +69,6 @@ function Paragraphs({ en, zh }: { en?: string; zh?: string }) {
 function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
   const t = String(s?.type ?? '').toLowerCase();
 
-  // 對話
   if (t === 'dialogs' || t === 'dialogues' || t === 'conversations') {
     const items = Array.isArray(s?.items) ? s.items : [];
     return (
@@ -76,7 +91,6 @@ function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
     );
   }
 
-  // 閱讀
   if (t === 'reading') {
     const items = Array.isArray(s?.items) ? s.items : [];
     return (
@@ -99,7 +113,6 @@ function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
     );
   }
 
-  // 練習（和閱讀同型呈現）
   if (t === 'exercise') {
     const items = Array.isArray(s?.items) ? s.items : [];
     return (
@@ -122,7 +135,6 @@ function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
     );
   }
 
-  // 字彙
   if (t === 'vocab' || t === 'vocabulary' || t === 'words') {
     const items = Array.isArray(s?.items) ? s.items : [];
     return (
@@ -137,10 +149,10 @@ function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
               </div>
               {Array.isArray(w?.examples) && w.examples.length ? (
                 <div style={{ marginTop: 4 }}>
-                  {w.examples.map((ex: any, j: number) => (
+                  {w.examples.map((e: any, j: number) => (
                     <div key={j} style={{ color: '#4b5563' }}>
-                      {ex?.en ?? ''}
-                      {ex?.zh ? <span style={{ marginLeft: 6 }}>（{ex.zh}）</span> : null}
+                      {e?.en ?? ''}
+                      {e?.zh ? <span style={{ marginLeft: 6 }}>（{e.zh}）</span> : null}
                     </div>
                   ))}
                 </div>
@@ -155,8 +167,11 @@ function RenderSection({ s, imageBase }: { s: any; imageBase: string }) {
   return null;
 }
 
-export default async function Page({ params }: { params: Params }) {
-  const data = await fetchUnit(params);
+// 注意：Next 15 要求 params 也要 await
+export default async function Page({ params }: { params: Promise<Params> }) {
+  const baseUrl = await buildBaseUrl();
+  const p = await params; // ← 重要
+  const data = await fetchUnit(baseUrl, p);
 
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: 16 }}>
