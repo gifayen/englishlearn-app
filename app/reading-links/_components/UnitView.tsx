@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import RecordComparePanel from "./selfcheck/RecordComparePanel";
 
 /* ===================== 型別（與 API 對齊） ===================== */
 export type UnitData = {
@@ -165,6 +166,7 @@ function HoverCard({
 
   if (!data) return null;
   const v = data.item;
+  const etyUrl = `https://www.etymonline.com/word/${encodeURIComponent(v.word)}`;
 
   return (
     <div
@@ -179,7 +181,7 @@ function HoverCard({
       }}
       role="dialog" aria-label={`Definition of ${v.word}`}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' as const }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>{v.word}</div>
         {v.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151' }}>{v.pos}</span>}
         {v.kk && (
@@ -187,6 +189,15 @@ function HoverCard({
             [{v.kk}]
           </span>
         )}
+        <a
+          href={etyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="查字源（Etymonline）"
+          style={{ fontSize: 12, textDecoration: 'none', border: '1px solid #e5e7eb', padding: '2px 6px', borderRadius: 8, background: '#fff', color: '#111827' }}
+        >
+          字源
+        </a>
         <button type="button" title="發音單字" onClick={() => speak(v.word)}
           style={{ marginLeft: 'auto', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer' }}>
           🔊
@@ -213,9 +224,97 @@ function HoverCard({
   );
 }
 
+/* ============ 每題獨立錄音器（解決「按一題其它題也觸發」） ============ */
+function useRecorderIsolated() {
+  const [recState, setRecState] = useState<'idle'|'recording'|'ready'>('idle');
+  const chunksRef = useRef<BlobPart[]>([]);
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = URL.createObjectURL(blob);
+        setRecState('ready');
+      };
+      mr.start(); mediaRef.current = mr; setRecState('recording');
+    } catch { alert('無法啟動麥克風，請檢查權限設定。'); }
+  };
+  const stop = () => { mediaRef.current?.stop(); mediaRef.current = null; };
+  const play = () => { if (audioUrlRef.current) new Audio(audioUrlRef.current).play(); };
+  const url = () => audioUrlRef.current;
+  return { recState, start, stop, play, url };
+}
+
+function QuestionRecorder({
+  text,
+  onSpeak,
+  onScored
+}: {
+  text: string;
+  onSpeak: (t: string) => void;
+  onScored: (score: number) => void;
+}) {
+  const rec = useRecorderIsolated();
+
+  async function scoreRecording(expected: string, blobUrl: string | null) {
+    if (!blobUrl) return 0;
+    const clampLocal = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+    const targetLen = Math.max(1, expected.replace(/\s+/g, ' ').trim().length);
+    const estSec = clampLocal(targetLen / 12, 1.2, 12);
+    const dur = await new Promise<number>((resolve) => { const a = new Audio(blobUrl!); a.onloadedmetadata = () => resolve(a.duration || estSec); a.onerror = () => resolve(estSec); });
+    const lenScore = 100 * (1 - Math.min(Math.abs(dur - estSec) / estSec, 1));
+    const baseline = 65;
+    const bonus = clampLocal((targetLen / 80) * 20, 0, 20);
+    const total = clampLocal(Math.round(0.7 * lenScore + 0.3 * (baseline + bonus)), 0, 100);
+    return total;
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, padding: '8px 10px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          {text}
+        </div>
+        <button type="button" onClick={() => onSpeak(text)}
+          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>🔊 Reference</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+        {rec.recState !== 'recording' ? (
+          <button type="button" onClick={rec.start}
+            style={{ border:'1px solid #93c5fd', background:'#eff6ff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>⏺ 開始錄音</button>
+        ) : (
+          <button type="button" onClick={rec.stop}
+            style={{ border:'1px solid #fecaca', background:'#fee2e2', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>⏹ 停止</button>
+        )}
+        <button type="button" onClick={rec.play} disabled={!rec.url()}
+          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor: rec.url() ? 'pointer' : 'not-allowed', fontSize:12 }}>▶️ 播放錄音</button>
+        <button
+          type="button"
+          disabled={!rec.url()}
+          onClick={async () => { const sc = await scoreRecording(text || '', rec.url()); onScored(sc); }}
+          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor: rec.url() ? 'pointer' : 'not-allowed', fontSize:12 }}
+        >
+          📊 評分
+        </button>
+      </div>
+    </>
+  );
+}
+
 /* ===================== 主元件（含 unitKey 命名空間 + sticky 修正） ===================== */
 export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: string }) {
   const KEY = (unitKey?.trim() || data.title || 'unit').toLowerCase();
+  const titleClean = useMemo(
+    () => (data.title || '').replace(/\s*\[.*?\]\s*$/,''),
+    [data.title]
+  );
 
   /* 生字本（以 unit 命名空間存取） */
   const WB_KEY = `wb:${KEY}`;
@@ -257,17 +356,32 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
   const rmWB = (w: string) => { const n = wb.filter(x => x.word !== w); setWb(n); saveWB(n); };
   const inWB = (w: string) => wb.some(x => x.word === w);
 
-  // 進度（可調整 + 可重設）
+  // 進度（可調整 + 可重設）—— SSR 安全初始化
   const PROG_KEY = `prog:${KEY}`;
-  const [progress, setProgress] = useState<number>(Number(localStorage.getItem(PROG_KEY) || 0));
+  const [progress, setProgress] = useState<number>(0);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(PROG_KEY) || 0);
+      setProgress(isNaN(v) ? 0 : v);
+    } catch {}
+  }, [PROG_KEY]);
   const setProgressPersist = (v: number) => { const vv = clamp(Math.round(v), 0, 100); setProgress(vv); localStorage.setItem(PROG_KEY, String(vv)); };
 
   const SEC_KEY = (sec: string) => `sec:${KEY}:${sec}`;
-  const [doneDlg, setDoneDlg] = useState<boolean>(localStorage.getItem(SEC_KEY('dialogue')) === '1');
-  const [doneTxt, setDoneTxt] = useState<boolean>(localStorage.getItem(SEC_KEY('text')) === '1');
-  const [doneRead, setDoneRead] = useState<boolean>(localStorage.getItem(SEC_KEY('reading')) === '1');
-  const [doneVocab, setDoneVocab] = useState<boolean>(localStorage.getItem(SEC_KEY('vocab')) === '1');
-  const [doneQuiz, setDoneQuiz] = useState<boolean>(localStorage.getItem(SEC_KEY('quiz')) === '1');
+  const [doneDlg, setDoneDlg] = useState(false);
+  const [doneTxt, setDoneTxt] = useState(false);
+  const [doneRead, setDoneRead] = useState(false);
+  const [doneVocab, setDoneVocab] = useState(false);
+  const [doneQuiz, setDoneQuiz] = useState(false);
+  useEffect(() => {
+    try {
+      setDoneDlg(localStorage.getItem(SEC_KEY('dialogue')) === '1');
+      setDoneTxt(localStorage.getItem(SEC_KEY('text')) === '1');
+      setDoneRead(localStorage.getItem(SEC_KEY('reading')) === '1');
+      setDoneVocab(localStorage.getItem(SEC_KEY('vocab')) === '1');
+      setDoneQuiz(localStorage.getItem(SEC_KEY('quiz')) === '1');
+    } catch {}
+  }, [KEY]);
 
   useEffect(() => {
     const doneCount = [doneDlg, doneTxt, doneRead, doneVocab, doneQuiz].filter(Boolean).length;
@@ -341,80 +455,196 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     return <>{nodes}</>;
   }
 
-  /* ====== 頂部工具列/錨點（方形按鈕） ====== */
-  function TopBar() {
-    const AnchorBtn = ({ href, targetId, children }: { href: string; targetId: string; children: React.ReactNode }) => (
-      <a
-        href={href}
-        onClick={(e) => { e.preventDefault(); smoothScrollToId(targetId, topBarRef); }}
+  // === 共用色票（每個功能一個淡雅色系）===
+const BTN_THEMES = {
+  dialogues: { base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#eef2ff', hoverText:'#1e3a8a', hoverBorder:'#c7d2fe', activeBg:'#e0e7ff', activeBorder:'#a5b4fc' },
+  text:      { base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#f0fdf4', hoverText:'#166534', hoverBorder:'#bbf7d0', activeBg:'#dcfce7', activeBorder:'#86efac' },
+  reading:   { base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#fefce8', hoverText:'#854d0e', hoverBorder:'#fde68a', activeBg:'#fef3c7', activeBorder:'#fcd34d' },
+  vocabulary:{ base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#fff1f2', hoverText:'#9f1239', hoverBorder:'#fecdd3', activeBg:'#ffe4e6', activeBorder:'#fda4af' },
+  progress:  { base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#ecfeff', hoverText:'#155e75', hoverBorder:'#a5f3fc', activeBg:'#cffafe', activeBorder:'#67e8f9' },
+  selfcheck: { base:'#ffffff', text:'#0f172a', border:'#e5e7eb', hoverBg:'#fff7ed', hoverText:'#9a3412', hoverBorder:'#fed7aa', activeBg:'#ffedd5', activeBorder:'#fdba74' },
+} as const;
+
+type BtnThemeKey = keyof typeof BTN_THEMES;
+
+function ThemedAnchorBtn({
+  href,
+  targetId,
+  theme,
+  children,
+  onClick,
+}: {
+  href: string;
+  targetId: string;
+  theme: BtnThemeKey;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const [hover, setHover] = React.useState(false);
+  const [active, setActive] = React.useState(false);
+  const t = BTN_THEMES[theme];
+
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        onClick?.();
+        // 讓錨點平滑捲動，沿用你的函式
+        smoothScrollToId(targetId, topBarRef);
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setActive(false); }}
+      onMouseDown={() => setActive(true)}
+      onMouseUp={() => setActive(false)}
+      style={{
+        textDecoration: 'none',
+        color: active ? t.hoverText : hover ? t.hoverText : t.text,
+        border: `1px solid ${active ? t.activeBorder : hover ? t.hoverBorder : t.border}`,
+        background: active ? t.activeBg : hover ? t.hoverBg : t.base,
+        borderRadius: 999,
+        padding: '8px 12px',
+        fontSize: 13,
+        transition: 'all .15s ease-in-out',
+        boxShadow: active ? 'inset 0 1px 0 rgba(0,0,0,.04)' : 'none',
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+// 給 SectionHeader 右上角用：由 targetId 推論對應色票
+function themeFromSectionId(id: string): BtnThemeKey {
+  if (/^dialogue/.test(id))    return 'dialogues';
+  if (/^text/.test(id))        return 'text';
+  if (/^reading/.test(id))     return 'reading';
+  if (/^vocabulary/.test(id))  return 'vocabulary';
+  if (/^progress/.test(id))    return 'progress';
+  if (/^selfcheck/.test(id))   return 'selfcheck';
+  return 'text';
+}
+
+  /* ====== 頂部工具列/錨點（方形按鈕，含主題色 hover/active） ====== */
+function TopBar() {
+  const IconBtn: React.CSSProperties = {
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    borderRadius: 10,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    fontSize: 12,
+    height: 36,
+    minWidth: 36,
+    whiteSpace: 'nowrap',
+    transition: 'all .15s ease-in-out',
+  };
+
+  const readWholePage = () => {
+    const parts: string[] = [];
+    if (data.dialogues) parts.push(Object.values(data.dialogues).flat().map(l => `${l.speaker}: ${l.en}`).join(' '));
+    if (data.reading?.en) parts.push(data.reading.en);
+    if (data.exercise?.en) parts.push(data.exercise.en);
+    speak(parts.join(' '));
+  };
+
+  return (
+    <div
+      ref={topBarRef}
+      className="js-topbar"
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 20,
+        background: 'linear-gradient(180deg,#fff,#fafafa)',
+        borderBottom: '1px solid #e5e7eb',
+      }}
+    >
+      {/* 第一排：標題 + 控制 */}
+      <div
         style={{
-          textDecoration: 'none', color: '#111827', border: '1px solid #e5e7eb',
-          background: '#fff', borderRadius: 999, padding: '8px 12px', fontSize: 13
+          maxWidth: 980,
+          margin: '0 auto',
+          padding: '8px 16px',
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          flexWrap: 'wrap' as const,
         }}
       >
-        {children}
-      </a>
-    );
-    const IconBtn: React.CSSProperties = {
-      border: '1px solid #e5e7eb', background: '#fff', borderRadius: 10,
-      padding: '6px 10px', cursor: 'pointer', fontSize: 12, height: 36, minWidth: 36, whiteSpace: 'nowrap'
-    };
-    const readWholePage = () => {
-      const parts: string[] = [];
-      if (data.dialogues) parts.push(Object.values(data.dialogues).flat().map(l => `${l.speaker}: ${l.en}`).join(' '));
-      if (data.reading?.en) parts.push(data.reading.en);
-      if (data.exercise?.en) parts.push(data.exercise.en);
-      speak(parts.join(' '));
-    };
-    return (
-      <div ref={topBarRef} className="js-topbar" style={{ position: 'sticky', top: 0, zIndex: 20, background: 'linear-gradient(180deg,#fff,#fafafa)', borderBottom: '1px solid #e5e7eb' }}>
-        <div style={{ maxWidth: 980, margin: '0 auto', padding: '8px 16px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
-          <strong style={{ fontSize: 22 }}>{data.title}</strong>
+        <strong style={{ fontSize: 22 }}>{titleClean}</strong>
 
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', whiteSpace: 'nowrap', flexWrap: 'wrap' as const }}>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>中文</label>
-            <input type="checkbox" checked={showZhAll} onChange={e => setShowZhAll(e.currentTarget.checked)} />
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            whiteSpace: 'nowrap',
+            flexWrap: 'wrap' as const,
+          }}
+        >
+          <label style={{ fontSize: 12, color: '#6b7280' }}>中文</label>
+          <input type="checkbox" checked={showZhAll} onChange={e => setShowZhAll(e.currentTarget.checked)} />
 
-            <div style={{ width: 8 }} />
-            <label style={{ fontSize: 12, color: '#6b7280' }}>圖寬 {imgW}px</label>
-            <input type="range" min={200} max={400} step={10} value={imgW} onChange={e => setImgW(Number(e.currentTarget.value))} />
+          <div style={{ width: 8 }} />
+          <label style={{ fontSize: 12, color: '#6b7280' }}>圖寬 {imgW}px</label>
+          <input type="range" min={200} max={400} step={10} value={imgW} onChange={e => setImgW(Number(e.currentTarget.value))} />
 
-            <label style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>語速</label>
-            <input type="range" min={0.7} max={1.3} step={0.05} value={rate} onChange={e => setRate(Number(e.currentTarget.value))} />
+          <label style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>語速</label>
+          <input type="range" min={0.7} max={1.3} step={0.05} value={rate} onChange={e => setRate(Number(e.currentTarget.value))} />
 
-            <label style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>聲音</label>
-            <select value={voicePref} onChange={e => setVoicePref(e.currentTarget.value as any)} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 6px', fontSize: 12 }}>
-              <option value="auto">自動</option>
-              <option value="female">女聲</option>
-              <option value="male">男聲</option>
-            </select>
+          <label style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>聲音</label>
+          <select value={voicePref} onChange={e => setVoicePref(e.currentTarget.value as any)} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 6px', fontSize: 12 }}>
+            <option value="auto">自動</option>
+            <option value="female">女聲</option>
+            <option value="male">男聲</option>
+          </select>
 
-            <button type="button" onClick={readWholePage} style={IconBtn} title="朗讀整個頁面">🔊 朗讀</button>
-            <button type="button" onClick={stop} style={IconBtn}>⏹ 停止</button>
-            <button
-              type="button"
-              onClick={() => { setWbOpen(true); setTimeout(() => smoothScrollToId('wordbook', topBarRef), 10); }}
-              style={{ ...IconBtn, background: wbOpen ? '#eef2ff' : '#fff' }}
-              title="開啟生字本並跳至該區"
-            >
-              📒 生字本
-            </button>
-          </span>
-        </div>
-        <div style={{ maxWidth: 980, margin: '0 auto', padding: '8px 16px', display: 'flex', gap: 8 }}>
-          <AnchorBtn href="#dialogues" targetId="dialogues">DIALOGUE</AnchorBtn>
-          <AnchorBtn href="#text" targetId="text">TEXT</AnchorBtn>
-          <AnchorBtn href="#reading" targetId="reading">READING</AnchorBtn>
-          <AnchorBtn href="#vocabulary" targetId="vocabulary">VOCABULARY</AnchorBtn>
-          <AnchorBtn href="#progress" targetId="progress">PROGRESS</AnchorBtn>
-          <AnchorBtn href="#selfcheck" targetId="selfcheck">SELF-CHECK</AnchorBtn>
-        </div>
+          <button type="button" onClick={readWholePage} style={IconBtn} title="朗讀整個頁面">🔊 朗讀</button>
+          <button type="button" onClick={stop} style={IconBtn}>⏹ 停止</button>
+          <button
+            type="button"
+            onClick={() => { setWbOpen(true); setTimeout(() => smoothScrollToId('wordbook', topBarRef), 10); }}
+            style={{ ...IconBtn, background: wbOpen ? '#eef2ff' : '#fff', border: wbOpen ? '1px solid #c7d2fe' : IconBtn.border }}
+            title="開啟生字本並跳至該區"
+          >
+            📒 生字本
+          </button>
+        </span>
       </div>
-    );
-  }
+
+      {/* 第二排：錨點（六個主題色） */}
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: '8px 16px', display: 'flex', gap: 8 }}>
+        <ThemedAnchorBtn href="#dialogues"  targetId="dialogues"  theme="dialogues">DIALOGUE</ThemedAnchorBtn>
+        <ThemedAnchorBtn href="#text"       targetId="text"       theme="text">TEXT</ThemedAnchorBtn>
+        <ThemedAnchorBtn href="#reading"    targetId="reading"    theme="reading">READING</ThemedAnchorBtn>
+        <ThemedAnchorBtn href="#vocabulary" targetId="vocabulary" theme="vocabulary">VOCABULARY</ThemedAnchorBtn>
+        <ThemedAnchorBtn href="#progress"   targetId="progress"   theme="progress">PROGRESS</ThemedAnchorBtn>
+        <ThemedAnchorBtn href="#selfcheck"  targetId="selfcheck"  theme="selfcheck">SELF-CHECK</ThemedAnchorBtn>
+      </div>
+    </div>
+  );
+}
 
   /* ===================== 自我檢查：閱讀題強化（只 1 篇改編、品質清理、題數對齊） ===================== */
-  type QuizType = 'en2zh' | 'zh2en' | 'cloze' | 'jigsaw' | 'reading' | 'reading_adapted' | 'listening';
+  // ===== 題型（加入本次新增）=====
+  type QuizType =
+    | 'en2zh'                  // 英→中（單字選擇）
+    | 'zh2en'                  // 中→英（單字選擇）
+    | 'cloze'                  // 例句填空（選擇）
+    | 'jigsaw'                 // 句子重組（選擇）
+    | 'reading'                // 閱讀測驗（原文）
+    | 'reading_adapted'        // 閱讀測驗（改編）
+    | 'listening'              // 唸讀
+    // 新增（填空/翻譯）
+    | 'cloze_para_mc'          // 段落填空（選擇）
+    | 'word_fill_en2zh_input'  // 英→中（單字填寫）
+    | 'word_fill_zh2en_input'  // 中→英（單字填寫）
+    | 'sent_cloze_input'       // 句子填空（打字）
+    | 'para_cloze_input'       // 段落填空（打字）
+    | 'translate_zh2en_input'; // 語句翻譯（中→英，打字）
+
   type QuizQ = {
     type: QuizType;
     prompt: string;
@@ -423,6 +653,7 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     explain?: string;
     audioText?: string;
     passageIndex?: number;
+    answerText?: string; // 打字題的作答
   };
 
   const [quizType, setQuizType] = useState<QuizType>('en2zh');
@@ -438,15 +669,12 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
   const SYN: Record<string, string> = { beautiful:'pretty', young:'youthful', policeman:'police officer', singer:'vocalist', writer:'author', classmate:'schoolmate', cousin:'relative', kind:'friendly', smart:'bright' };
 
   const cleanDuplicates = (t: string) => {
-    // "friendly and friendly" / "friendly, friendly" 之類
     t = t.replace(/\b(\w+)\b\s+(and|,)\s+\1\b/gi, '$1');
-    // 重複連接詞（最多兩個）
     let count = 0;
     t = t.replace(/\b(Besides|Moreover|In addition|However|Therefore|Meanwhile|For example),\s*/gi, (m) => {
       if (count >= 2) return '';
       count++; return m.replace(/\s+/g, ' ');
     });
-    // 三連重複詞
     t = t.replace(/\b(\w+)\b(?:\s+\1\b){1,}/gi, '$1');
     return t;
   };
@@ -456,20 +684,17 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     const sents = splitSentences(text);
     let out = sents.slice();
 
-    // 輕度打散中段
     if (out.length >= 4) {
       const mid = out.slice(1, out.length - 1).sort(() => Math.random() - 0.5);
       out = [out[0], ...mid, out[out.length - 1]];
     }
 
-    // 同義替換（不大量）
     let joined = out.join(' ');
     Object.entries(SYN).forEach(([a, b]) => {
       const re = new RegExp(`\\b${escapeRegExp(a)}\\b`, 'gi');
       joined = joined.replace(re, (m) => (m[0] === m[0].toUpperCase() ? b[0].toUpperCase() + b.slice(1) : b));
     });
 
-    // 適度插入（最多兩個）連接詞，不連續重複
     const s2 = splitSentences(joined).map((s, i, arr) => {
       if (i === 0) return s;
       if (Math.random() < 0.35) {
@@ -486,11 +711,10 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     return cleaned;
   };
 
-  function makeReadingQuestionsFrom(passage: string, useVocab: VocabItem[], pIndex: number, need: number): QuizQ[] {
+  function makeReadingQuestionsFrom(passage: string, useVocab: VocabItem[], pIndex: number, need: number): any[] {
     const sents = splitSentences(passage);
-    const qs: QuizQ[] = [];
+    const qs: any[] = [];
 
-    // 優先：主旨、字義、推論
     const keywords = (useVocab.slice(0, 3).map(v => v.word).join(', ') || 'the people and their jobs');
     const correctMain = `The paragraph mainly discusses ${keywords}.`;
     const optsMain = [correctMain, 'A weather report unrelated to the topic.', 'An advertisement for a new product.', 'Directions to a museum far away.']
@@ -510,7 +734,6 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     const optsInf = [correctInf, infB, 'The weather is very cold in the story.', 'The city is famous for beaches.'].sort(() => Math.random() - 0.5);
     qs.push({ type: 'reading', prompt: 'Which inference is most reasonable based on the passage?', options: optsInf, correct: correctInf, explain: 'Look for pronouns and logical relations.', passageIndex: pIndex });
 
-    // 再補 T/F 細節（從不同句子挑，多做幾題直到滿足 need）
     let si = 0;
     while (qs.length < need && si < sents.length) {
       const base = sents[si++];
@@ -527,6 +750,20 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     return qs.slice(0, need);
   }
 
+  // ===== 自我評量工具（相等化比對、抽樣等）=====
+  const STOPWORDS = new Set(['the','a','an','of','to','in','on','for','and','or','but','with','as','at','by','from','that','this','is','are','was','were','be','been','being','it','its','their','his','her','my','your','our']);
+  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim();
+  const almostEqual = (a: string, b: string) => norm(a) === norm(b);
+  const pickRand = <T,>(arr: T[], n: number) => arr.slice().sort(() => Math.random() - 0.5).slice(0, n);
+  const findTokenToBlank = (sentence: string) => {
+    const toks = sentence.split(/\s+/);
+    const candidates = toks
+      .map((w, i) => ({ w: w.replace(/^[^A-Za-z']+|[^A-Za-z']+$/g, ''), i }))
+      .filter(x => x.w && !STOPWORDS.has(x.w.toLowerCase()) && x.w.length >= 3);
+    if (!candidates.length) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  };
+
   function makeListeningQuestions(n: number) {
     const acc: string[] = [];
     if (data.dialogues) Object.values(data.dialogues).forEach(lines => lines.forEach(l => acc.push(l.en)));
@@ -534,117 +771,197 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     if (data.exercise?.en) acc.push(data.exercise.en);
     (data.vocabulary ?? []).forEach(v => v.examples?.forEach(ex => acc.push(ex.en)));
     const take = acc.filter(Boolean).sort(() => Math.random() - 0.5).slice(0, n);
-    return take.map(t => ({ type: 'listening' as const, prompt: 'Read the following aloud, then press Stop:', correct: 'OK', audioText: t, explain: 'Heuristic scoring; for precise scoring, connect a cloud API.' }));
+    return take.map(t => ({ type: 'listening' as const, prompt: '請唸讀以下文字，錄音後按停止：', correct: 'OK', audioText: t, explain: '本地啟發式評分；若需精準比對可串接雲端語音 API。' }));
   }
 
-  const [qPackSize] = useState(4); // 閱讀每篇基礎 4 題
+  const [qPackSize] = useState(4);
 
   function makeQuiz(count: number, type: QuizType) {
     const n = clamp(count, 5, 20);
-    const vocab = vocabList.filter(v => v.word && v.translation);
+    const vocab = vocabList.filter(v => v.word && (v.translation || v.examples?.length));
 
     setGenNote('');
 
+    // 閱讀題
     if (type === 'reading' || type === 'reading_adapted') {
       const base = (data.reading?.en || data.exercise?.en || '').trim();
       if (!base) { setPassages([]); setGenNote('本文不足以產生閱讀題。'); return []; }
 
       let passage = base;
       if (type === 'reading_adapted') {
-        // 只產 1 篇改編
         passage = softAdaptOne(base);
       }
       setPassages([passage]);
 
-      // 依題數要求產生
       const qs = makeReadingQuestionsFrom(passage, vocab.slice(0, 10), 0, n);
       if (qs.length < n) setGenNote(`本段落可出題上限為 ${qs.length} 題（已盡可能補足）。`);
       return qs;
     }
 
-    setPassages([]); // 其他題型不顯示 passage
+    // 其它題型不需要 passage
+    setPassages([]);
 
+    // 唸讀
     if (type === 'listening') return makeListeningQuestions(n);
+
     if (vocab.length < 2) { setGenNote('單字量不足，請新增 vocabulary。'); return []; }
 
-    const trs = vocab.map(v => v.translation as string);
-    const shuffled = [...vocab].sort(() => Math.random() - 0.5).slice(0, n);
+    // 既有的選擇題
+    if (type === 'en2zh' || type === 'zh2en' || type === 'cloze' || type === 'jigsaw') {
+      const trs = vocab.map(v => v.translation as string);
+      const shuffled = [...vocab].sort(() => Math.random() - 0.5).slice(0, n);
 
-    const qs = shuffled.map(v => {
-      if (type === 'en2zh') {
-        const wrongs = trs.filter(t => t !== v.translation).sort(() => Math.random() - 0.5).slice(0, 3);
-        const options = [...wrongs, v.translation!].sort(() => Math.random() - 0.5);
-        const exp = [v.pos ? `POS: ${v.pos}` : '', v.kk ? `KK: [${v.kk}]` : '', v.examples?.[0]?.en ? `Ex: ${v.examples[0].en}` : ''].filter(Boolean).join('  ');
-        return { type, prompt: `What is the correct Chinese for “${v.word}”?`, options, correct: v.translation!, explain: exp };
-      }
-      if (type === 'zh2en') {
-        const words = vocab.map(x => x.word);
-        const wrongs = words.filter(w => w !== v.word).sort(() => Math.random() - 0.5).slice(0, 3);
-        const options = [...wrongs, v.word].sort(() => Math.random() - 0.5);
-        const exp = v.examples?.[0]?.en ? `Example: ${v.examples[0].en}` : '';
-        return { type, prompt: `Which English word matches “${v.translation}”?`, options, correct: v.word, explain: exp };
-      }
-      if (type === 'cloze') {
-        const ex = v.examples?.find(e => new RegExp(`\\b${escapeRegExp(v.word)}\\b`, 'i').test(e.en)) || v.examples?.[0];
-        const baseSent = ex?.en || `I know the word ${v.word}.`;
-        const prompt = baseSent.replace(new RegExp(`\\b${escapeRegExp(v.word)}\\b`, 'i'), '_____');
-        const words = vocab.map(x => x.word);
-        const wrongs = words.filter(w => w !== v.word).sort(() => Math.random() - 0.5).slice(0, 3);
-        const options = [...wrongs, v.word].sort(() => Math.random() - 0.5);
-        return { type, prompt: `Fill in the blank: ${prompt}`, options, correct: v.word, explain: ex?.zh ? `Ref: ${ex.en} (${ex.zh})` : `Ref: ${ex?.en || ''}` };
-      }
-      if (type === 'jigsaw') {
+      const qs = shuffled.map(v => {
+        if (type === 'en2zh') {
+          const wrongs = trs.filter(t => t !== v.translation).sort(() => Math.random() - 0.5).slice(0, 3);
+          const options = [...wrongs, v.translation!].sort(() => Math.random() - 0.5);
+          const exp = [v.pos ? `POS: ${v.pos}` : '', v.kk ? `KK: [${v.kk}]` : '', v.examples?.[0]?.en ? `Ex: ${v.examples[0].en}` : ''].filter(Boolean).join('  ');
+          return { type, prompt: `What is the correct Chinese for “${v.word}”?`, options, correct: v.translation!, explain: exp } as QuizQ;
+        }
+        if (type === 'zh2en') {
+          const words = vocab.map(x => x.word);
+          const wrongs = words.filter(w => w !== v.word).sort(() => Math.random() - 0.5).slice(0, 3);
+          const options = [...wrongs, v.word].sort(() => Math.random() - 0.5);
+          const exp = v.examples?.[0]?.en ? `Example: ${v.examples[0].en}` : '';
+          return { type, prompt: `Which English word matches “${v.translation}”?`, options, correct: v.word, explain: exp } as QuizQ;
+        }
+        if (type === 'cloze') {
+          const ex = v.examples?.find(e => new RegExp(`\\b${escapeRegExp(v.word)}\\b`, 'i').test(e.en)) || v.examples?.[0];
+          const baseSent = ex?.en || `I know the word ${v.word}.`;
+          const prompt = baseSent.replace(new RegExp(`\\b${escapeRegExp(v.word)}\\b`, 'i'), '_____');
+          const words = vocab.map(x => x.word);
+          const wrongs = words.filter(w => w !== v.word).sort(() => Math.random() - 0.5).slice(0, 3);
+          const options = [...wrongs, v.word].sort(() => Math.random() - 0.5);
+          return { type, prompt: `Fill in the blank: ${prompt}`, options, correct: v.word, explain: ex?.zh ? `Ref: ${ex.en} (${ex.zh})` : `Ref: ${ex?.en || ''}` } as QuizQ;
+        }
+        // jigsaw
         const ex = v.examples?.[0]?.en || `Amy is a ${v.word}.`;
         const tokens = ex.split(' ');
         const correct = ex;
         const genAlt = () => tokens.slice().sort(() => Math.random() - 0.5).join(' ');
         const options = Array.from(new Set([correct, genAlt(), genAlt(), genAlt()])).slice(0, 4).sort(() => Math.random() - 0.5);
-        return { type, prompt: 'Choose the correct sentence order:', options, correct, explain: `Answer: ${correct}` };
+        return { type, prompt: 'Choose the correct sentence order:', options, correct, explain: `Answer: ${correct}` } as QuizQ;
+      });
+
+      return qs;
+    }
+
+    // 段落填空（選擇）
+    if (type === 'cloze_para_mc') {
+      const src = (data.reading?.en || data.exercise?.en || '').trim();
+      if (!src) { setGenNote('沒有可用的段落來源。'); return []; }
+      const sentences = splitSentences(src);
+      const qs: QuizQ[] = [];
+      const posMap = new Map<string, string>();
+      (data.vocabulary ?? []).forEach(v => v.pos && posMap.set(v.word.toLowerCase(), v.pos));
+
+      for (let i = 0; i < sentences.length && qs.length < n; i++) {
+        const s = sentences[i];
+        const tk = findTokenToBlank(s);
+        if (!tk) continue;
+        const target = tk.w;
+        const pos = posMap.get(target.toLowerCase());
+        const prompt = s.replace(new RegExp(`\\b${escapeRegExp(target)}\\b`), '_____');
+
+        const candWords = (data.vocabulary ?? []).map(v => v.word);
+        const distract = (data.vocabulary ?? [])
+          .filter(v => v.word.toLowerCase() !== target.toLowerCase() && (!pos || v.pos === pos))
+          .map(v => v.word);
+        const options = pickRand(distract.length ? distract : candWords.filter(w => w.toLowerCase() !== target.toLowerCase()), 3);
+        options.push(target);
+        qs.push({
+          type,
+          prompt: `Choose the best word to complete the sentence: ${prompt}`,
+          options: options.sort(() => Math.random() - 0.5),
+          correct: target,
+          explain: `Original: ${s}`,
+        });
       }
-      return { type, prompt: v.word, options: [], correct: v.translation || '', explain: '' };
-    });
+      if (!qs.length) setGenNote('此段不易產生填空位。');
+      return qs.slice(0, n);
+    }
 
-    return qs;
-  }
+    // 英→中（單字，打字）
+    if (type === 'word_fill_en2zh_input') {
+      const items = pickRand(vocab, n);
+      return items.map(v => ({
+        type,
+        prompt: `請輸入「${v.word}」的中文意思：`,
+        correct: String(v.translation || '').trim(),
+        explain: v.examples?.[0]?.en ? `Example: ${v.examples[0].en}` : '',
+        answerText: ''
+      }));
+    }
 
-  // === 錄音（listening 題型使用） ===
-  function useRecorder() {
-    const [recState, setRecState] = useState<'idle'|'recording'|'ready'>('idle');
-    const chunksRef = useRef<BlobPart[]>([]);
-    const mediaRef = useRef<MediaRecorder | null>(null);
-    const audioUrlRef = useRef<string | null>(null);
-    const start = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mr = new MediaRecorder(stream);
-        chunksRef.current = [];
-        mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-        mr.onstop = () => {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-          if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-          audioUrlRef.current = URL.createObjectURL(blob);
-          setRecState('ready');
+    // 中→英（單字，打字）
+    if (type === 'word_fill_zh2en_input') {
+      const items = pickRand(vocab.filter(v => v.translation), n);
+      return items.map(v => ({
+        type,
+        prompt: `請把「${v.translation}」翻成英文單字：`,
+        correct: v.word,
+        explain: v.examples?.[0]?.en ? `Example: ${v.examples[0].en}` : '',
+        answerText: ''
+      }));
+    }
+
+    // 句子填空（打字）
+    if (type === 'sent_cloze_input') {
+      const exSents = vocab
+        .map(v => v.examples?.find(e => e.en && new RegExp(`\\b${escapeRegExp(v.word)}\\b`, 'i').test(e.en)) || v.examples?.[0])
+        .filter(Boolean)
+        .map(x => x!.en);
+      const pick = pickRand(exSents, n);
+      return pick.map((s): QuizQ => {
+        const tk = findTokenToBlank(s)! || { w: 'the' };
+        const prompt = s.replace(new RegExp(`\\b${escapeRegExp(tk.w)}\\b`), '_____');
+        return {
+          type,
+          prompt: `Fill in the blank: ${prompt}`,
+          correct: tk.w,
+          explain: `Original: ${s}`,
+          answerText: ''
         };
-        mr.start(); mediaRef.current = mr; setRecState('recording');
-      } catch { alert('無法啟動麥克風，請檢查權限設定。'); }
-    };
-    const stop = () => { mediaRef.current?.stop(); mediaRef.current = null; };
-    const play = () => { if (audioUrlRef.current) new Audio(audioUrlRef.current).play(); };
-    const url = () => audioUrlRef.current;
-    return { recState, start, stop, play, url };
+      });
+    }
+
+    // 段落填空（打字）
+    if (type === 'para_cloze_input') {
+      const src = (data.reading?.en || data.exercise?.en || '').trim();
+      if (!src) { setGenNote('沒有可用的段落來源。'); return []; }
+      const sentences = splitSentences(src);
+      const pick = pickRand(sentences, n);
+      return pick.map((s): QuizQ => {
+        const tk = findTokenToBlank(s)! || { w: 'the' };
+        const prompt = s.replace(new RegExp(`\\b${escapeRegExp(tk.w)}\\b`), '_____');
+        return {
+          type,
+          prompt: `Fill in the blank: ${prompt}`,
+          correct: tk.w,
+          explain: `Original: ${s}`,
+          answerText: ''
+        };
+      });
+    }
+
+    // 語句翻譯（中→英，打字）
+    if (type === 'translate_zh2en_input') {
+      const pairs = (data.vocabulary ?? [])
+        .flatMap(v => (v.examples ?? []).filter(ex => ex.en && ex.zh).map(ex => ({ zh: ex.zh!, en: ex.en })));
+      if (!pairs.length) { setGenNote('缺少可對照的中英文例句。'); return []; }
+      const items = pickRand(pairs, n);
+      return items.map(p => ({
+        type,
+        prompt: `請把下列中文翻成英文：${p.zh}`,
+        correct: p.en,
+        explain: `Reference: ${p.en}`,
+        answerText: ''
+      }));
+    }
+
+    return [];
   }
-  const rec = useRecorder();
-  async function scoreRecording(expected: string, blobUrl: string | null) {
-    if (!blobUrl) return 0;
-    const targetLen = Math.max(1, expected.replace(/\s+/g, ' ').trim().length);
-    const estSec = clamp(targetLen / 12, 1.2, 12);
-    const dur = await new Promise<number>((resolve) => { const a = new Audio(blobUrl); a.onloadedmetadata = () => resolve(a.duration || estSec); a.onerror = () => resolve(estSec); });
-    const lenScore = 100 * (1 - Math.min(Math.abs(dur - estSec) / estSec, 1));
-    const baseline = 65;
-    const bonus = clamp((targetLen / 80) * 20, 0, 20);
-    const total = clamp(Math.round(0.7 * lenScore + 0.3 * (baseline + bonus)), 0, 100);
-    return total;
-  }
+
   const [listenScores, setListenScores] = useState<Record<number, number>>({});
 
   const startQuiz = () => {
@@ -657,11 +974,14 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
     setDone('quiz', qs.length > 0);
   };
   const submitQuiz = () => setSubmitted(true);
+
   const score = useMemo(() => {
     if (!submitted || quiz.length === 0) return 0;
     let s = 0;
     quiz.forEach((q, idx) => {
       const ans = answers[idx];
+      const typed = (q as any).answerText;
+
       if (q.type === 'reading' || q.type === 'reading_adapted') {
         if (q.options && q.options.length) {
           if (ans === q.correct) s++;
@@ -671,6 +991,14 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
       } else if (q.type === 'listening') {
         const ls = listenScores[idx] ?? 0;
         if (ls >= 70) s++;
+      } else if (
+        q.type === 'word_fill_en2zh_input' ||
+        q.type === 'word_fill_zh2en_input' ||
+        q.type === 'sent_cloze_input' ||
+        q.type === 'para_cloze_input' ||
+        q.type === 'translate_zh2en_input'
+      ) {
+        if (almostEqual(String(typed || ''), String(q.correct))) s++;
       } else {
         if (ans === q.correct) s++;
       }
@@ -704,14 +1032,18 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
           <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>{title}</h2>
 
           <span style={{ display: 'flex', gap: 6 }}>
-            {rightLinks.map(lnk => (
-              <a key={lnk.targetId} href={`#${lnk.targetId}`}
-                onClick={(e) => { e.preventDefault(); smoothScrollToId(lnk.targetId, topBarRef); }}
-                style={{ textDecoration: 'none', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, color: '#111827' }}>
-                {lnk.label}
-              </a>
-            ))}
-          </span>
+  {rightLinks.map(lnk => (
+    <ThemedAnchorBtn
+      key={lnk.targetId}
+      href={`#${lnk.targetId}`}
+      targetId={lnk.targetId}
+      theme={themeFromSectionId(lnk.targetId)}
+      onClick={() => {/* 保留掛鉤可加額外動作 */}}
+    >
+      {lnk.label}
+    </ThemedAnchorBtn>
+  ))}
+</span>
 
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
             {extraActions}
@@ -977,14 +1309,24 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
             <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
               {wb.map(it => {
                 const src = vocabDict.get(it.word.toLowerCase());
+                const etyUrl = `https://www.etymonline.com/word/${encodeURIComponent(it.word)}`;
                 return (
                   <div key={it.word} style={{ background: '#fff', border: '1px solid #a5b4fc', borderRadius: 10, padding: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
                       <button type="button" title="發音" onClick={() => speak(it.word)}
                         style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
                       <div style={{ fontWeight: 800 }}>{it.word}</div>
                       {it.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb' }}>{it.pos}</span>}
                       {it.kk && <span style={{ color: '#6b7280', whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 120, display: 'inline-block' }}>[{it.kk}]</span>}
+                      <a
+                        href={etyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="查字源（Etymonline）"
+                        style={{ fontSize: 12, textDecoration: 'none', border: '1px solid #e5e7eb', padding: '2px 6px', borderRadius: 8, background: '#fff', color: '#111827' }}
+                      >
+                        字源
+                      </a>
                       <button type="button" title="移除" onClick={() => rmWB(it.word)}
                         style={{ marginLeft: 'auto', border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🗑</button>
                     </div>
@@ -1012,40 +1354,116 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
       )}
 
       {/* 自我檢查 */}
-      <section id="selfcheck" style={{ scrollMarginTop: topH + 16, border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 12, padding: 12, marginBottom: 36 }}>
-        <div style={{ position: 'sticky', top: topH + 8, zIndex: 9, margin: '-12px -12px 12px', padding: '8px 12px',
-                      background: 'linear-gradient(180deg,#fff7ed,#fffbeb)', borderBottom: '1px solid #fde68a',
-                      borderTopLeftRadius: 12, borderTopRightRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Self-Check（多題型）</h3>
-          <span style={{ color: '#92400e' }}>（Vocabulary / Passage 自動出題；改編 1 篇、錄音比對）</span>
+      <section
+        id="selfcheck"
+        style={{
+          scrollMarginTop: topH + 16,
+          border: '1px solid #fde68a',
+          background: '#fffbeb',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 36
+        }}
+      >
+        {/* 頂端固定的工具列（題型/題數/出題/得分） */}
+        <div
+          style={{
+            position: 'sticky',
+            top: topH + 8,
+            zIndex: 9,
+            margin: '-12px -12px 12px',
+            padding: '8px 12px',
+            background: 'linear-gradient(180deg,#fff7ed,#fffbeb)',
+            borderBottom: '1px solid #fde68a',
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Self-Check</h3>
+
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
             <label style={{ fontSize: 12, color: '#6b7280' }}>
               題型
-              <select value={quizType} onChange={e => setQuizType(e.currentTarget.value as any)} style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px' }}>
+              {/* === 選單排序：字彙選擇 → 句子/段落選擇 → 填空題（字彙/句/段/翻譯）→ 閱讀 → 唸讀 === */}
+              <select
+                value={quizType}
+                onChange={e => setQuizType(e.currentTarget.value as any)}
+                style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px' }}
+              >
+                {/* 字彙（選擇） */}
                 <option value="en2zh">英→中（單字選擇）</option>
                 <option value="zh2en">中→英（單字選擇）</option>
+
+                {/* 句子/段落（選擇） */}
                 <option value="cloze">例句填空（選擇）</option>
+                <option value="cloze_para_mc">段落填空（選擇）</option>
                 <option value="jigsaw">句子重組（選擇）</option>
+
+                {/* 填空（打字/翻譯） */}
+                <option value="word_fill_en2zh_input">英→中（單字填寫）</option>
+                <option value="word_fill_zh2en_input">中→英（單字填寫）</option>
+                <option value="sent_cloze_input">句子填空（打字）</option>
+                <option value="para_cloze_input">段落填空（打字）</option>
+                <option value="translate_zh2en_input">語句翻譯（中→英，打字）</option>
+
+                {/* 閱讀（選擇） */}
                 <option value="reading">閱讀測驗（原文，英文出題）</option>
                 <option value="reading_adapted">閱讀測驗（改編文，英文出題）</option>
-                <option value="listening">錄音比對（單字/句/段/文）</option>
+
+                {/* 唸讀題 */}
+                <option value="listening">唸讀（單字/句/段/文）</option>
               </select>
             </label>
+
             <label style={{ fontSize: 12, color: '#6b7280' }}>
               題數
-              <select value={qCount} onChange={e => setQCount(Number(e.currentTarget.value))} style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px' }}>
-                {[5,10,12,15,18,20].map(n => <option key={n} value={n}>{n}</option>)}
+              <select
+                value={qCount}
+                onChange={e => setQCount(Number(e.currentTarget.value))}
+                style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px' }}
+              >
+                {[5, 10, 12, 15, 18, 20].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
               </select>
             </label>
-            <button type="button" onClick={startQuiz}
-              style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+
+            <button
+              type="button"
+              onClick={startQuiz}
+              style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}
+            >
               開始出題
             </button>
-            {submitted && <div style={{ fontWeight: 800, color: '#b45309' }}>得分：{score} / {quiz.length}</div>}
+
+            {submitted && (
+              <div style={{ fontWeight: 800, color: '#b45309' }}>
+                得分：{score} / {quiz.length}
+              </div>
+            )}
           </span>
         </div>
 
-        {/* 顯示 Reading Passages（僅閱讀題型） */}
+        {/* 題型提示（序列說明） */}
+        <div style={{ fontSize: 12, color: '#92400e', margin: '4px 0 8px' }}>
+          選單順序：字彙（選擇）→ 句/段（選擇）→ <b>填空</b>（字彙/句/段/翻譯）→ 閱讀 → <b>唸讀</b>。
+        </div>
+
+        {/* 唸讀面板（修正：傳入 data 而非 unitData） */}
+        {quizType === "listening" && (
+          <div style={{ marginTop: 12 }}>
+            <RecordComparePanel unitData={data} limit={qCount} />
+          </div>
+        )}
+
+        {/* 非唸讀題：一般題目 */}
+        {quizType !== "listening" && (
+          <div style={{ marginTop: 12 }} />
+        )}
+
         {(quizType === 'reading' || quizType === 'reading_adapted') && passages.length > 0 && (
           <div style={{ display: 'grid', gap: 12, marginBottom: 8 }}>
             {passages.map((p, i) => (
@@ -1077,44 +1495,21 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
 
                   {isListening ? (
                     <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <div style={{ flex: 1, padding: '8px 10px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                          {q.audioText}
+                      <QuestionRecorder
+                        text={q.audioText || ''}
+                        onSpeak={(t) => speak(t)}
+                        onScored={(sc) => setListenScores(s => ({ ...s, [idx]: sc }))}
+                      />
+                      {typeof listenScores[idx] === 'number' && (
+                        <div style={{ marginTop: 6, fontWeight: 700, color: listenScores[idx] >= 70 ? '#065f46' : '#991b1b' }}>
+                          Score: {listenScores[idx]}
                         </div>
-                        <button type="button" onClick={() => speak(q.audioText || '')}
-                          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>🔊 Reference</button>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-                        {rec.recState !== 'recording' ? (
-                          <button type="button" onClick={rec.start}
-                            style={{ border:'1px solid #93c5fd', background:'#eff6ff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>⏺ Record</button>
-                        ) : (
-                          <button type="button" onClick={rec.stop}
-                            style={{ border:'1px solid #fecaca', background:'#fee2e2', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12 }}>⏹ Stop</button>
-                        )}
-                        <button type="button" onClick={rec.play} disabled={!rec.url()}
-                          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12, opacity: rec.url() ? 1 : .5 }}>▶️ Play</button>
-                        <button
-                          type="button"
-                          disabled={!rec.url()}
-                          onClick={async () => {
-                            const sc = await scoreRecording(q.audioText || '', rec.url());
-                            setListenScores(s => ({ ...s, [idx]: sc }));
-                          }}
-                          style={{ border:'1px solid #e5e7eb', background:'#fff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:12, opacity: rec.url() ? 1 : .5 }}
-                        >
-                          📊 Score
-                        </button>
-                        {typeof listenScores[idx] === 'number' && (
-                          <span style={{ alignSelf: 'center', color: listenScores[idx] >= 70 ? '#065f46' : '#991b1b', fontWeight: 700 }}>
-                            {listenScores[idx]}
-                          </span>
-                        )}
-                      </div>
+                      )}
                       {q.explain && submitted && <div style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>{q.explain}</div>}
                     </>
                   ) : (
                     <>
+                      {/* 選擇題 */}
                       {q.options && q.options.length ? (
                         <div style={{ display: 'grid', gap: 6 }}>
                           {q.options.map(opt => {
@@ -1143,39 +1538,71 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
                           })}
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', gap: 10 }}>
-                          {['T','F'].map(opt => {
-                            const ok = (q.correct === true && opt==='T') || (q.correct === false && opt==='F');
-                            const wrongPick = submitted && picked===opt && !ok;
-                            return (
-                              <label key={opt}
-                                style={{
-                                  display:'flex',alignItems:'center',gap:8,padding:'6px 8px',
-                                  border:'1px solid #e5e7eb',borderRadius:8,
-                                  background: submitted ? (ok ? '#ecfdf5' : wrongPick ? '#fef2f2' : '#fff') : '#fff'
-                                }}>
-                                <input
-                                  type="radio"
-                                  name={`q-${idx}`}
-                                  value={opt}
-                                  checked={picked===opt}
-                                  disabled={submitted}
-                                  onChange={() => setAnswers(a => ({ ...a, [idx]: opt }))}
-                                />
-                                <span>{opt}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
+                        <>
+                          {/* 是非題（沒有 options，且 correct 是 boolean） */}
+                          {typeof q.correct === 'boolean' ? (
+                            <div style={{ display: 'flex', gap: 10 }}>
+                              {['T','F'].map(opt => {
+                                const ok = (q.correct === true && opt==='T') || (q.correct === false && opt==='F');
+                                const wrongPick = submitted && picked===opt && !ok;
+                                return (
+                                  <label key={opt}
+                                    style={{
+                                      display:'flex',alignItems:'center',gap:8,padding:'6px 8px',
+                                      border:'1px solid #e5e7eb',borderRadius:8,
+                                      background: submitted ? (ok ? '#ecfdf5' : wrongPick ? '#fef2f2' : '#fff') : '#fff'
+                                    }}>
+                                    <input
+                                      type="radio"
+                                      name={`q-${idx}`}
+                                      value={opt}
+                                      checked={picked===opt}
+                                      disabled={submitted}
+                                      onChange={() => setAnswers(a => ({ ...a, [idx]: opt }))}
+                                    />
+                                    <span>{opt}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            // 填空題（沒有 options，且 correct 是字串）
+                            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' as const }}>
+                              <input
+                                type="text"
+                                value={(quiz[idx] as any).answerText ?? ''}
+                                disabled={submitted}
+                                onChange={e => {
+                                  const v = e.currentTarget.value;
+                                  setQuiz(qs => {
+                                    const next = qs.slice();
+                                    (next[idx] as any).answerText = v;
+                                    return next;
+                                  });
+                                }}
+                                placeholder="請在此輸入你的答案"
+                                style={{ flex:1, minWidth: 240, border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 8px' }}
+                              />
+                              {submitted && (
+                                <span style={{ fontWeight: 700, color: almostEqual((quiz[idx] as any).answerText || '', String(q.correct)) ? '#065f46' : '#991b1b' }}>
+                                  {almostEqual((quiz[idx] as any).answerText || '', String(q.correct)) ? '✓ 正確' : '✗ 錯誤'}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </>
                       )}
 
+                      {/* 解析 / 正解 */}
                       {submitted && (
                         <div style={{ marginTop: 8, fontSize: 13, color: '#374151' }}>
-                          {q.options && q.options.length ? <>Answer: <b>{String(q.correct)}</b></> : <>Answer: {q.correct === true ? 'T' : 'F'}</>}
+                          {typeof q.correct === 'boolean'
+                            ? <>Answer: {q.correct === true ? 'T' : 'F'}</>
+                            : <>Answer: <b>{String(q.correct)}</b></>}
                           {q.explain ? <div style={{ marginTop: 4, color: '#6b7280' }}>{q.explain}</div> : null}
-                          {String(picked || '') !== String(q.correct) && (
+                          {!((q.options && q.options.length) || typeof q.correct === 'boolean') && !(almostEqual((q as any).answerText || '', String(q.correct))) && (
                             <div style={{ marginTop: 6, color: '#b91c1c' }}>
-                              Tip: Review the Vocabulary key words, then re-read the Text/Reading context.
+                              Tip: 對照單字與例句，再回去閱讀 Text / Reading 內容會更穩。
                             </div>
                           )}
                         </div>
@@ -1187,14 +1614,20 @@ export default function UnitView({ data, unitKey }: { data: UnitData; unitKey?: 
             })}
 
             {!submitted ? (
-              <button type="button" onClick={submitQuiz}
-                style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>
+              <button
+                type="button"
+                onClick={submitQuiz}
+                style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
+              >
                 送出作答
               </button>
             ) : (
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={startQuiz}
-                  style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 14 }}>
+                <button
+                  type="button"
+                  onClick={startQuiz}
+                  style={{ border: '1px solid #fcd34d', background: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 14 }}
+                >
                   再練一回
                 </button>
               </div>
@@ -1251,7 +1684,7 @@ function VocabPanel({
           style={{ flex: 1, minWidth: 240, border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 10px' }}
         />
         <label style={{ fontSize: 12, color: '#6b7280' }}>
-          詞性：
+          語法：
           <select value={pos} onChange={e => setPos(e.currentTarget.value)}
             style={{ marginLeft: 6, border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 6px' }}>
             <option value="all">全部</option>
@@ -1261,43 +1694,55 @@ function VocabPanel({
       </div>
 
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-        {filtered.map(v => (
-          <div key={v.word} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <div style={{ fontSize: 22, fontWeight: 900 }}>{v.word}</div>
-              {v.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb' }}>{v.pos}</span>}
-              {v.kk && <span style={{ color: '#6b7280', whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 120, display: 'inline-block' }}>[{v.kk}]</span>}
-            </div>
-
-            {showZh && v.translation && <div style={{ marginBottom: 6 }}>{v.translation}</div>}
-
-            {!!v.examples?.length && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                {v.examples.slice(0, 2).map((ex, i) => (
-                  <div key={i} style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ flex: 1 }}>{ex.en}</div>
-                      <button type="button" title="發音例句" onClick={() => speak(ex.en)}
-                        style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
-                    </div>
-                    {showZh && ex.zh && <div style={{ color: '#6b7280' }}>{ex.zh}</div>}
-                  </div>
-                ))}
+        {filtered.map(v => {
+          const etyUrl = `https://www.etymonline.com/word/${encodeURIComponent(v.word)}`;
+          return (
+            <div key={v.word} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' as const }}>
+                <div style={{ fontSize: 22, fontWeight: 900 }}>{v.word}</div>
+                {v.pos && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 999, border: '1px solid #e5e7eb', background: '#f9fafb' }}>{v.pos}</span>}
+                {v.kk && <span style={{ color: '#6b7280', whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 120, display: 'inline-block' }}>[{v.kk}]</span>}
+                <a
+                  href={etyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="查字源（Etymonline）"
+                  style={{ fontSize: 12, textDecoration: 'none', border: '1px solid #e5e7eb', padding: '2px 6px', borderRadius: 8, background: '#fff', color: '#111827' }}
+                >
+                  字源
+                </a>
               </div>
-            )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button type="button" title="發音單字" onClick={() => speak(v.word)}
-                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
-              <button type="button"
-                title={inWB(v.word) ? '從生字本移除' : '加入生字本'}
-                onClick={() => inWB(v.word) ? rmWB(v.word) : addWB({ word: v.word, translation: v.translation, pos: v.pos, kk: v.kk })}
-                style={{ border: '1px solid #e5e7eb', background: inWB(v.word) ? '#fef3c7' : '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
-                {inWB(v.word) ? '★ 已加入' : '☆ 加入'}
-              </button>
+              {showZh && v.translation && <div style={{ marginBottom: 6 }}>{v.translation}</div>}
+
+              {!!v.examples?.length && (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {v.examples.slice(0, 2).map((ex, i) => (
+                    <div key={i} style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ flex: 1 }}>{ex.en}</div>
+                        <button type="button" title="發音例句" onClick={() => speak(ex.en)}
+                          style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '2px 6px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                      </div>
+                      {showZh && ex.zh && <div style={{ color: '#6b7280' }}>{ex.zh}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" title="發音單字" onClick={() => speak(v.word)}
+                  style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>🔊</button>
+                <button type="button"
+                  title={inWB(v.word) ? '從生字本移除' : '加入生字本'}
+                  onClick={() => inWB(v.word) ? rmWB(v.word) : addWB({ word: v.word, translation: v.translation, pos: v.pos, kk: v.kk })}
+                  style={{ border: '1px solid #e5e7eb', background: inWB(v.word) ? '#fef3c7' : '#fff', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>
+                  {inWB(v.word) ? '★ 已加入' : '☆ 加入'}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
