@@ -36,24 +36,16 @@ export default async function Page({ params }: { params: Promise<Params> }) {
 
   let data: UnitData | null = null;
   let error: string | null = null;
+
   try {
     data = await fetchUnit(baseUrl, p);
   } catch (e: any) {
     error = e?.message || String(e);
   }
 
-  return (
-    <main style={{ maxWidth: 980, margin: '24px auto', padding: '0 16px' }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 12 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800 }}>
-          {data?.title ?? 'Untitled'}
-        </h1>
-        <span style={{ color: '#6b7280' }}>
-          /reading-links/{p.level}/{p.grade}/{p.sem}/{p.unit}
-        </span>
-      </div>
-
-      {error && (
+  if (error) {
+    return (
+      <main style={{ maxWidth: 980, margin: '24px auto', padding: '0 16px' }}>
         <div
           style={{
             border: '1px solid #fecaca',
@@ -61,16 +53,23 @@ export default async function Page({ params }: { params: Promise<Params> }) {
             color: '#b91c1c',
             padding: 12,
             borderRadius: 10,
-            marginBottom: 16,
             fontSize: 14,
           }}
         >
           無法載入內容（{error}）
         </div>
-      )}
+      </main>
+    );
+  }
 
-      {!data && !error && <div>載入中…</div>}
-      {data && <UnitView data={data} />}
-    </main>
-  );
+  if (!data) {
+    return (
+      <main style={{ maxWidth: 980, margin: '24px auto', padding: '0 16px' }}>
+        載入中…
+      </main>
+    );
+  }
+
+  // ✅ 交由 UnitView 顯示標題與工具列，避免與頁面重複
+  return <UnitView data={data} unitKey={`${p.level}/${p.grade}/${p.sem}/${p.unit}`} />;
 }
