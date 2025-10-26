@@ -1,0 +1,93 @@
+{
+  "title": "JHS G7 S1 Unit 01 – Extension 2",
+  "images": {
+    "dialogue": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-2/dialogue-01.jpg",
+      "/assets/units/jhs/g7/s1/unit-01-ext-2/dialogue-02.jpg"
+    ],
+    "text": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-2/text-01.jpg"
+    ],
+    "reading": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-2/reading-01.jpg"
+    ]
+  },
+  "imagesByDialogue": {
+    "game_show_round1": ["/assets/jhs/g7/s1/unit-01-ext-2/dialogue-01.jpg"],
+    "game_show_round2": ["/assets/jhs/g7/s1/unit-01-ext-2/dialogue-02.jpg"]
+  },
+  "dialogues": {
+    "game_show_round1": [
+      { "speaker": "Judy", "en": "Welcome to *What’s This?* I’m Judy. Hello, David and Amy. Ready?", "zh": "歡迎來到《這是什麼？》！我是 Judy。David、Amy 你們準備好了嗎？" },
+      { "speaker": "David", "en": "Ready!", "zh": "準備好了！" },
+      { "speaker": "Amy", "en": "Let’s go!", "zh": "開始吧！" },
+      { "speaker": "Judy", "en": "Look at this picture. What is this?", "zh": "看這張圖片。這是什麼？" },
+      { "speaker": "Amy", "en": "It’s a duck.", "zh": "是鴨子。" },
+      { "speaker": "Judy", "en": "Not a duck.", "zh": "不是鴨子。" },
+      { "speaker": "David", "en": "It’s a goose.", "zh": "是一隻鵝。" },
+      { "speaker": "Judy", "en": "Correct—ten points for you!", "zh": "答對了——給你十分！" },
+      { "speaker": "Judy", "en": "Next one: What are these?", "zh": "下一題：這些是什麼？" },
+      { "speaker": "David", "en": "Those are lions.", "zh": "那些是獅子。" },
+      { "speaker": "Judy", "en": "Sorry, not lions.", "zh": "抱歉，不是獅子。" },
+      { "speaker": "Amy", "en": "They are tigers!", "zh": "是老虎！" },
+      { "speaker": "Judy", "en": "Right! Amy gets ten points!", "zh": "答對！Amy 獲得十分！" }
+    ],
+    "game_show_round2": [
+      { "speaker": "Judy", "en": "Bonus round! What’s this animal?", "zh": "加分回合！這是什麼動物？" },
+      { "speaker": "David", "en": "It’s a monkey!", "zh": "是一隻猴子！" },
+      { "speaker": "Judy", "en": "Hmm… not a monkey.", "zh": "嗯……不是猴子。" },
+      { "speaker": "Amy", "en": "Is it big and tall?", "zh": "它又大又高嗎？" },
+      { "speaker": "Judy", "en": "Yes, it is.", "zh": "是的。" },
+      { "speaker": "Amy", "en": "It’s Bigfoot!", "zh": "是大腳怪！" },
+      { "speaker": "Judy", "en": "That’s it! Ten more points—Amy is our winner!", "zh": "就是它！再加十分——Amy 是本回合的贏家！" }
+    ]
+  },
+  "text": {
+    "title": "Animal Photo Day",
+    "en": "Today is Animal Photo Day at school. Our classroom is clean, not dirty. On the wall are pictures of animals: a hippo, a zebra, and a goat. Some students bring more photos—bees, frogs, and sheep. We learn new words and write short notes: “The goose is angry,” “The mouse is small,” and “The elephant is strong.” It’s a fun show for our class!",
+    "zh": "今天是學校的動物照片日。我們的教室很乾淨，不髒。牆上有很多動物照片：河馬、斑馬和山羊。有些同學帶了更多的照片——蜜蜂、青蛙和綿羊。我們學新單字並寫短註記：「這隻鵝很生氣」、「這隻老鼠很小」、「這頭大象很強壯」。這是我們班的一場有趣的小展覽！"
+  },
+  "reading": {
+    "title": "I Am Bigfoot",
+    "en": "I am tall and strong. I am not an elephant. I am brown and hairy, but I am not a bear. The forest is my home. Fruit is my favorite food. Yeti is my good friend. Look! Those are my footprints. They are very big. I am Bigfoot.",
+    "zh": "我又高又強壯，但我不是大象。我是棕色、毛茸茸的，但我不是熊。森林是我的家，水果是我最喜歡的食物。雪人是我的好朋友。看！那些是我的腳印，又大又清楚。我是大腳怪。"
+  },
+  "exercise": {
+    "title": "At the Nature Park",
+    "en": "This Saturday, our class visits a nature park. We see lions and tigers in pictures but not in the field. Near the pond, a frog jumps. On a bench, we share fruit. I take a photo of a goat and a sheep. My friend points to big footprints on the trail and says, “Maybe Bigfoot is here!” We laugh and follow the clean path back to school.",
+    "zh": "這個星期六，我們班去自然公園。野外沒有真的獅子和老虎，只在圖卡上看得到。池塘邊有青蛙跳動；我們坐在長椅上分享水果。我拍到一隻山羊和一隻綿羊。朋友指著步道上又大又清楚的腳印，說：「也許大腳怪在這裡！」我們笑著沿著乾淨的步道走回學校。"
+  },
+  "vocabulary": [
+    { "word": "show", "translation": "節目；展覽", "pos": "n.", "examples": [{ "en": "The game show is on TV.", "zh": "那個遊戲節目正在播放。" }] },
+    { "word": "picture", "translation": "圖片；圖畫", "pos": "n.", "examples": [{ "en": "Look at this picture.", "zh": "看這張圖片。" }] },
+    { "word": "goose", "translation": "鵝（複數 geese）", "pos": "n.", "examples": [{ "en": "A goose is near the pond.", "zh": "池塘邊有一隻鵝。" }] },
+    { "word": "point", "translation": "分數；指向", "pos": "n./v.", "examples": [{ "en": "Ten points for you!", "zh": "給你十分！" }] },
+    { "word": "lion", "translation": "獅子", "pos": "n.", "examples": [{ "en": "Lions live in groups.", "zh": "獅子群居生活。" }] },
+    { "word": "monkey", "translation": "猴子", "pos": "n.", "examples": [{ "en": "The monkey climbs a tree.", "zh": "猴子爬上樹。" }] },
+    { "word": "more", "translation": "更多的", "pos": "adj.", "examples": [{ "en": "We need more pictures.", "zh": "我們需要更多圖片。" }] },
+    { "word": "winner", "translation": "贏家", "pos": "n.", "examples": [{ "en": "Amy is the winner.", "zh": "Amy 是贏家。" }] },
+    { "word": "bee", "translation": "蜜蜂", "pos": "n.", "examples": [{ "en": "A bee is on the flower.", "zh": "花上有一隻蜜蜂。" }] },
+    { "word": "frog", "translation": "青蛙", "pos": "n.", "examples": [{ "en": "A frog jumps into the water.", "zh": "青蛙跳進水裡。" }] },
+    { "word": "zebra", "translation": "斑馬", "pos": "n.", "examples": [{ "en": "A zebra has black and white stripes.", "zh": "斑馬有黑白條紋。" }] },
+    { "word": "birthday", "translation": "生日", "pos": "n.", "examples": [{ "en": "Today is my birthday.", "zh": "今天是我的生日。" }] },
+    { "word": "elephant", "translation": "大象", "pos": "n.", "examples": [{ "en": "An elephant is very strong.", "zh": "大象很強壯。" }] },
+    { "word": "mouse", "translation": "老鼠（複數 mice）", "pos": "n.", "examples": [{ "en": "A mouse is small.", "zh": "老鼠很小。" }] },
+    { "word": "ant", "translation": "螞蟻", "pos": "n.", "examples": [{ "en": "Ants work together.", "zh": "螞蟻會合作。" }] },
+    { "word": "sheep", "translation": "綿羊（單複同形）", "pos": "n.", "examples": [{ "en": "Two sheep are on the hill.", "zh": "山坡上有兩隻綿羊。" }] },
+    { "word": "goat", "translation": "山羊", "pos": "n.", "examples": [{ "en": "The goat eats grass.", "zh": "山羊吃草。" }] },
+    { "word": "angry", "translation": "生氣的", "pos": "adj.", "examples": [{ "en": "The goose looks angry.", "zh": "那隻鵝看起來很生氣。" }] },
+    { "word": "young", "translation": "年輕的", "pos": "adj.", "examples": [{ "en": "The young singer is popular.", "zh": "那位年輕歌手很受歡迎。" }] },
+    { "word": "clean", "translation": "乾淨的", "pos": "adj.", "examples": [{ "en": "Our classroom is clean.", "zh": "我們的教室很乾淨。" }] },
+    { "word": "dirty", "translation": "髒的", "pos": "adj.", "examples": [{ "en": "Don’t step on the dirty floor.", "zh": "不要踩在髒地板上。" }] },
+    { "word": "hippo", "translation": "河馬", "pos": "n.", "examples": [{ "en": "A hippo lives near water.", "zh": "河馬住在水邊。" }] },
+    { "word": "strong", "translation": "強壯的", "pos": "adj.", "examples": [{ "en": "Bigfoot is strong.", "zh": "大腳怪很強壯。" }] },
+    { "word": "brown", "translation": "棕色的", "pos": "adj.", "examples": [{ "en": "It has brown hair.", "zh": "它有棕色的毛。" }] },
+    { "word": "but", "translation": "但是", "pos": "conj.", "examples": [{ "en": "I am hairy, but I am not a bear.", "zh": "我毛茸茸，但我不是熊。" }] },
+    { "word": "bear", "translation": "熊", "pos": "n.", "examples": [{ "en": "A bear is big and heavy.", "zh": "熊很大而且很重。" }] },
+    { "word": "fruit", "translation": "水果", "pos": "n.", "examples": [{ "en": "Fruit is my favorite food.", "zh": "水果是我最喜歡的食物。" }] },
+    { "word": "favorite", "translation": "最喜愛的", "pos": "adj.", "examples": [{ "en": "Apples are my favorite.", "zh": "蘋果是我最喜歡的。" }] },
+    { "word": "hairy", "translation": "毛茸茸的", "pos": "adj.", "examples": [{ "en": "The animal is hairy.", "zh": "那隻動物毛茸茸的。" }] },
+    { "word": "forest", "translation": "森林", "pos": "n.", "examples": [{ "en": "The forest is quiet.", "zh": "森林很安靜。" }] },
+    { "word": "footprint", "translation": "腳印", "pos": "n.", "examples": [{ "en": "The footprints are big.", "zh": "那些腳印很大。" }] }
+  ]
+}

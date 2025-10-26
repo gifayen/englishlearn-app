@@ -30,12 +30,12 @@
       { "speaker": "Amy", "en": "I see.", "zh": "我知道了。" }
     ]
   },
-  "reading": {
+  "text": {
     "title": "My Amazing Cousins",
     "en": "Hello, I’m Kevin. I have two cousins. Their names are Leo and Amy. Leo is tall and strong. He is a police officer. He is twenty-four years old. Amy is very beautiful. She is a famous singer. She is twenty-one. They are brother and sister. They are also kind and friendly. I love spending time with them. They are like a big brother and sister to me.",
     "zh": "哈囉，我是凱文。我有兩個表兄妹，他們的名字是李歐和艾咪。李歐又高又壯，他是一名警察，今年二十四歲。艾咪非常漂亮，是位知名的歌手，今年二十一歲。他們是兄妹，也都很親切又友善。我喜歡和他們在一起。他們就像我哥哥和姊姊一樣。"
   },
-  "exercise": {
+  "reading": {
     "title": "My Family",
     "en": "Hi! I’m Mia. I’m thirteen years old. This is my family. My father is a writer. He is forty-three years old. My mother is an office worker. She’s forty. This is my brother, Max. He is a baby—only two years old. And this is Daisy, our dog. She’s old but lovely. I love my dear family!",
     "zh": "嗨！我是米亞，今年十三歲。這是我的家人。我爸爸是作家，今年四十三歲。我媽媽是上班族，今年四十歲。這是我弟弟麥克斯，他還是嬰兒—只有兩歲。這是我們的狗黛西，她雖然年紀大了但很可愛。我愛我親愛的家人！"
@@ -333,16 +333,20 @@
     }
   ],
   "images": {
-    "dialogue": [
-      "/pics-reader/jhs/g7/s1/unit-01/dialog-01.png",
-      "/pics-reader/jhs/g7/s1/unit-01/dialog-02.png"
-    ],
-    "text": [],
-    "reading": []
-  },
-  "imagesByDialogue": {
-  "dialogue_a": ["/pics-reader/.../dialog-01.png"],
-  "dialogue_b": ["/pics-reader/.../dialog-02.png"]
-  }
+  "dialogue": [
+    "/assets/units/jhs/g7/s1/unit-01/dialogue-a.jpg",
+    "/assets/units/jhs/g7/s1/unit-01/dialogue-b.jpg"
+  ],
+  "text": [
+    "/assets/units/jhs/g7/s1/unit-01/text-cousins.jpg"
+  ],
+  "reading": [
+    "/assets/units/jhs/g7/s1/unit-01/reading-my-family.jpg"
+  ]
+},
+"imagesByDialogue": {
+  "dialogue_a": ["/assets/units/jhs/g7/s1/unit-01/dialogue-a.jpg"],
+  "dialogue_b": ["/assets/units/jhs/g7/s1/unit-01/dialogue-b.jpg"]
+}
 }
 

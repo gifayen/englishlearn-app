@@ -19,7 +19,7 @@ type LTMatch = {
   };
   context?: { text: string; offset: number; length: number };
 };
-type CheckResponse = { matches: LTMatch[] };
+type CheckResponse = { matches: LTMatch[]; source?: "premium" | "fallback" };
 
 /** ===================== 常數 ===================== */
 const CATEGORY_MAP: Record<"拼字" | "標點" | "文法", string[]> = {
@@ -69,7 +69,7 @@ function guessSubType(m: LTMatch): string | null {
   return null;
 }
 
-/** ===================== 視覺樣式（鎖定不走樣） ===================== */
+/** ===================== 視覺樣式 ===================== */
 const palette = {
   bg: "#f9fafb",
   text: "#111827",
@@ -119,12 +119,10 @@ const cardTitleStyle: React.CSSProperties = {
   fontWeight: 700,
   color: palette.text,
 };
-
 const subtleTextStyle: React.CSSProperties = {
   fontSize: 14,
   color: palette.sub,
 };
-
 const badgeDarkStyle: React.CSSProperties = {
   display: "inline-block",
   minWidth: 22,
@@ -136,7 +134,6 @@ const badgeDarkStyle: React.CSSProperties = {
   lineHeight: "18px",
   textAlign: "center" as const,
 };
-
 const filterBtnStyle = (active: boolean): React.CSSProperties => ({
   border: `1px solid ${active ? palette.brand : palette.border}`,
   background: active ? palette.brand : palette.white,
@@ -149,7 +146,6 @@ const filterBtnStyle = (active: boolean): React.CSSProperties => ({
   gap: 6,
   cursor: "pointer",
 });
-
 const filterBadgeStyle = (active: boolean): React.CSSProperties => ({
   display: "inline-block",
   minWidth: 16,
@@ -161,17 +157,14 @@ const filterBadgeStyle = (active: boolean): React.CSSProperties => ({
   lineHeight: "18px",
   textAlign: "center" as const,
 });
-
 const tableShellStyle: React.CSSProperties = {
   border: `1px solid ${palette.border}`,
   borderRadius: 12,
   overflow: "hidden",
 };
-
 const tableHeadStyle: React.CSSProperties = {
   background: palette.bg,
 };
-
 const tableCellStyle: React.CSSProperties = {
   padding: "8px",
   textAlign: "left" as const,
@@ -186,6 +179,7 @@ export default function EssayClient() {
   const [matches, setMatches] = useState<LTMatch[]>([]);
   const [filter, setFilter] = useState<FilterKey>("全部");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [ltSource, setLtSource] = useState<"premium" | "fallback" | null>(null);
 
   const [model, setModel] = useState<"gpt-4o-mini" | "gpt-4o">("gpt-4o-mini");
   const [rewritten, setRewritten] = useState("");
@@ -264,7 +258,7 @@ export default function EssayClient() {
     return "文法";
   }
 
-  /** ====== 檔案：匯入 .docx ====== */
+  /** ====== 檔案：匯入/匯出（略，同你現有） ====== */
   async function onPickDocx(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.currentTarget.value = "";
@@ -287,8 +281,6 @@ export default function EssayClient() {
       setBusyImportDocx(false);
     }
   }
-
-  /** ====== 檔案：匯入 .txt ====== */
   async function onPickTxt(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.currentTarget.value = "";
@@ -307,8 +299,6 @@ export default function EssayClient() {
       setBusyImportTxt(false);
     }
   }
-
-  /** ====== 檔案：下載改寫為 .txt ====== */
   function downloadRewrittenTxt() {
     const content = (rewritten || text || "").toString();
     if (!content.trim()) {
@@ -324,8 +314,6 @@ export default function EssayClient() {
     a.click();
     URL.revokeObjectURL(url);
   }
-
-  /** ====== 檔案：下載改寫為 .docx（呼叫 /api/export-docx，傳 { text }） ====== */
   async function downloadRewrittenDocx() {
     const content = (rewritten || text || "").toString();
     if (!content.trim()) {
@@ -338,17 +326,12 @@ export default function EssayClient() {
       const res = await fetch("/api/export-docx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: content, // 與後端 route.ts 對齊
-          // filename 也可一併傳，若不傳後端會給預設檔名
-          // filename: `essay-${new Date().toISOString().slice(0,10)}`
-        }),
+        body: JSON.stringify({ text: content }),
       });
       if (!res.ok) throw new Error(`DOCX 匯出失敗 ${res.status}`);
       const buf = await res.arrayBuffer();
       const blob = new Blob([buf], {
-        type:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -364,26 +347,51 @@ export default function EssayClient() {
     }
   }
 
-  /** 動作：LT 檢查（按鈕顯示 檢查中…） */
+  /** ====== LT 檢查（Premium 代理 + 來源顯示） ====== */
   async function onCheck() {
+    // 空文 guard
+    if (!text || !text.trim()) {
+      setMatches([]);
+      setLtSource(null);
+      setErrorMsg(null);
+      return;
+    }
+
     setChecking(true);
     setErrorMsg(null);
     setMatches([]);
+    setLtSource(null);
     try {
-      const normalized = text.replace(/\u3000/g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-      const res = await fetch("/api/check", {
+      const normalized = text
+        .replace(/\u3000/g, " ")
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim();
+
+      // 安全長度保護（可調）
+      const CHUNK_LIMIT = 20000;
+      const payload = normalized.length > CHUNK_LIMIT ? normalized.slice(0, CHUNK_LIMIT) : normalized;
+
+      const res = await fetch("/api/lt-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: normalized,
-          language: "en-US",
+          text: payload,
+          language: "auto",
           level: "picky",
           preferredVariants: "en-US",
+          motherTongue: "en-US", // zh-TW LT 不接受
         }),
       });
-      if (!res.ok) throw new Error(`LT ${res.status}`);
-      const data: CheckResponse = await res.json();
-      setMatches(data.matches ?? []);
+
+      const data: CheckResponse & { error?: string } = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || `LT ${res.status}`);
+      }
+
+      setMatches(data?.matches ?? []);
+      setLtSource(data?.source ?? null);
     } catch (e: any) {
       setErrorMsg(e?.message || "檢查失敗，請稍後再試");
     } finally {
@@ -391,7 +399,8 @@ export default function EssayClient() {
     }
   }
 
-  /** 動作：GPT 改寫 */
+  /** ====== GPT 改寫（原樣保留） ====== */
+  const [rewriteModel, setRewriteModel] = useState<"gpt-4o-mini" | "gpt-4o">("gpt-4o-mini");
   async function onRewrite() {
     setErrorMsg(null);
     setRewritten("");
@@ -400,7 +409,7 @@ export default function EssayClient() {
       const res = await fetch("/api/gpt-rewrite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model }),
+        body: JSON.stringify({ text, model: rewriteModel }),
       });
       if (!res.ok) throw new Error(`GPT ${res.status}`);
       const data = await res.json();
@@ -412,6 +421,7 @@ export default function EssayClient() {
     }
   }
 
+  /** 清除、撤銷/重做、套用建議（原樣保留） */
   function onClear() {
     setText("");
     setMatches([]);
@@ -420,10 +430,9 @@ export default function EssayClient() {
     setFilter("全部");
     setHistory([]);
     setRedoStack([]);
+    setLtSource(null);
     taRef.current?.focus();
   }
-
-  /** 一鍵套用（單條） */
   function applyReplacement(m: LTMatch, value: string) {
     if (!value) return;
     setHistory((h) => [...h, text]);
@@ -434,8 +443,6 @@ export default function EssayClient() {
     setText(newText);
     setTimeout(() => onCheck(), 0);
   }
-
-  /** 撤銷 / 重做 */
   function undoLast() {
     setHistory((h) => {
       if (h.length === 0) return h;
@@ -456,8 +463,6 @@ export default function EssayClient() {
       return r.slice(0, -1);
     });
   }
-
-  /** 一次全部套用最優（依目前篩選） */
   function applyAllBest() {
     const items = filtered
       .filter((m) => m.replacements && m.replacements[0] && typeof m.replacements[0].value === "string")
@@ -480,25 +485,22 @@ export default function EssayClient() {
     setText(newText);
     setTimeout(() => onCheck(), 0);
   }
-
   const canAutoApply = useMemo(
     () => filtered.some((m) => m.replacements && m.replacements[0] && m.replacements[0].value),
     [filtered]
   );
 
-  /** ====== 這裡決定 GPT 改寫卡片放哪邊（依錯誤數量） ====== */
+  /** GPT 改寫卡片（原樣保留，僅把 model 變數名調整避免與上方衝突） */
   const MOVE_THRESHOLD = 12;
   const placeRewriteLeft = matches.length > MOVE_THRESHOLD;
-
-  /** 抽出 GPT 改寫卡片 */
   function RewriteCard() {
     return (
       <div style={{ ...cardStyle, marginTop: 16 }}>
         <div style={cardHeaderStyle}>
           <div style={cardTitleStyle}>GPT 改寫</div>
           <select
-            value={model}
-            onChange={(e) => setModel(e.target.value as any)}
+            value={rewriteModel}
+            onChange={(e) => setRewriteModel(e.target.value as any)}
             style={{
               fontSize: 12,
               border: `1px solid ${palette.border}`,
@@ -525,7 +527,6 @@ export default function EssayClient() {
           >
             {rewritten}
           </div>
-          {/* 下載改寫結果 */}
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               onClick={downloadRewrittenTxt}
@@ -566,9 +567,8 @@ export default function EssayClient() {
   /** ===================== UI ===================== */
   return (
     <div style={layoutGrid}>
-      {/* 左欄 */}
+      {/* 左欄：編輯器與預覽（原樣） */}
       <div style={{ minWidth: 0 }}>
-        {/* 主標題 + 工具列（卡片） */}
         <div style={{ ...cardStyle, marginBottom: 16 }}>
           <div style={cardHeaderStyle}>
             <div style={mainTitleStyle}>作文自動偵錯批改</div>
@@ -626,7 +626,7 @@ export default function EssayClient() {
                 清除
               </button>
 
-              {/* 檔案匯入／匯出（小工具列） */}
+              {/* 匯入 */}
               <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", marginLeft: 8 }}>
                 <button
                   onClick={() => docxInputRef.current?.click()}
@@ -692,7 +692,6 @@ export default function EssayClient() {
               placeholder="Paste your English essay here…"
             />
 
-            {/* 隱藏 file inputs（用按鈕觸發） */}
             <input
               ref={docxInputRef}
               type="file"
@@ -710,7 +709,7 @@ export default function EssayClient() {
           </div>
         </div>
 
-        {/* 標示預覽（卡片） */}
+        {/* 標示預覽 */}
         <div style={{ ...cardStyle }}>
           <div style={cardHeaderStyle}>
             <div style={cardTitleStyle}>標示預覽</div>
@@ -731,25 +730,36 @@ export default function EssayClient() {
           </div>
         </div>
 
-        {/* 當錯誤多時，把 GPT 改寫卡片放到左欄（標示預覽下方） */}
-        {placeRewriteLeft && <RewriteCard />}
+        {matches.length > 12 && <RewriteCard />}
       </div>
 
-      {/* 右欄 */}
+      {/* 右欄：錯誤清單 + 來源標籤 */}
       <div style={{ minWidth: 0 }}>
-        {/* 錯誤清單（卡片，含總筆數徽章＋分類徽章） */}
         <div style={{ ...cardStyle }}>
           <div style={cardHeaderStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={cardTitleStyle}>錯誤清單</div>
-              <span style={badgeDarkStyle} title="目前檢查結果總筆數">
-                {counts.全部}
-              </span>
+              <span style={badgeDarkStyle} title="目前檢查結果總筆數">{counts.全部}</span>
             </div>
+            {/* 這一行就是「來源」指示 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span
+                title="目前這次檢查的來源"
+                style={{
+                  fontSize: 12,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: `1px solid ${ltSource === 'premium' ? '#93c5fd' : '#fca5a5'}`,
+                  background: ltSource === 'premium' ? '#eff6ff' : '#fff1f2',
+                  color: ltSource === 'premium' ? '#1e40af' : '#9f1239',
+                }}
+              >
+                來源：{ltSource ? (ltSource === 'premium' ? 'Premium' : 'Fallback') : '—'}
+              </span>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {/* 右邊工具（撤銷/重做/全部套用/分類） */}
               <button
-                onClick={undoLast}
+                onClick={() => undoLast()}
                 disabled={history.length === 0}
                 title={history.length ? "撤銷上一步替換" : "沒有可撤銷的步驟"}
                 style={{
@@ -766,7 +776,7 @@ export default function EssayClient() {
                 撤銷
               </button>
               <button
-                onClick={redoNext}
+                onClick={() => redoNext()}
                 disabled={redoStack.length === 0}
                 title={redoStack.length ? "重做下一步" : "沒有可重做的步驟"}
                 style={{
@@ -783,7 +793,7 @@ export default function EssayClient() {
                 重做
               </button>
               <button
-                onClick={applyAllBest}
+                onClick={() => applyAllBest()}
                 disabled={!canAutoApply}
                 title={canAutoApply ? "將目前清單（依篩選）全部套用第一順位建議" : "目前清單沒有可自動套用的建議"}
                 style={{
@@ -821,7 +831,6 @@ export default function EssayClient() {
           <div style={cardBodyStyle}>
             <div style={tableShellStyle}>
               <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
-                {/* 固定欄寬：#=30、類型=70、建議=100、說明/句子=自動 */}
                 <colgroup>
                   <col style={{ width: 30 }} />
                   <col style={{ width: 70 }} />
@@ -915,10 +924,9 @@ export default function EssayClient() {
           </div>
         </div>
 
-        {/* 錯誤少的情況：維持 GPT 改寫在右欄 */}
-        {!placeRewriteLeft && <RewriteCard />}
+        {matches.length <= 12 && <RewriteCard />}
 
-        {/* FAQ */}
+        {/* FAQ & 錯誤訊息（原樣） */}
         <div style={{ marginTop: 16, fontSize: 12, color: palette.sub }}>
           <div style={{ marginBottom: 4, fontWeight: 600, color: "#4b5563" }}>FAQ</div>
           <ul style={{ paddingLeft: 20, lineHeight: 1.6 }}>

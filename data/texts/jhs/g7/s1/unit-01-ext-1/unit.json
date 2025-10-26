@@ -1,0 +1,61 @@
+{
+  "title": "JHS G7 S1 Unit 01 – Extension 1",
+  "images": {
+    "dialogue": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/dialogue-at-school.jpg",
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/dialogue-in-classroom.jpg"
+    ],
+    "text": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/text-park-family.jpg"
+    ],
+    "reading": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/reading-sat-picnic.jpg"
+    ]
+  },
+  "imagesByDialogue": {
+    "at_school": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/dialogue-at-school.jpg"
+    ],
+    "in_the_classroom": [
+      "/assets/units/jhs/g7/s1/unit-01-ext-1/dialogue-in-classroom.jpg"
+    ]
+  },
+  "dialogues": {
+    "at_school": [
+      { "speaker": "Ann", "en": "Hi, Nick. Is this your brother?", "zh": "嗨，Nick。這是你的哥哥嗎？" },
+      { "speaker": "Nick", "en": "Yes. This is Ben. Ben, this is my classmate, Ann.", "zh": "對啊。他是 Ben。Ben，這是我的同學 Ann。" },
+      { "speaker": "Ben", "en": "Nice to meet you, Ann.", "zh": "很高興認識你，Ann。" },
+      { "speaker": "Ann", "en": "Nice to meet you, too. Are you in junior high school?", "zh": "我也很高興認識你。你是國中生嗎？" },
+      { "speaker": "Ben", "en": "No, I'm in elementary school. I'm eleven.", "zh": "不是，我是小學生。我十一歲。" }
+    ],
+    "in_the_classroom": [
+      { "speaker": "Irene", "en": "Zoe, is that your new pencil case?", "zh": "Zoe，那是你的新鉛筆盒嗎？" },
+      { "speaker": "Zoe", "en": "Yes, it is. My aunt is a designer. It's her gift.", "zh": "是的。我的阿姨是設計師。這是她送的禮物。" },
+      { "speaker": "Irene", "en": "Cool! What does your uncle do?", "zh": "好酷！你的叔叔是做什麼的？" },
+      { "speaker": "Zoe", "en": "He takes care of animals. He's a vet.", "zh": "他照顧動物。他是獸醫。" },
+      { "speaker": "Irene", "en": "Wow, that's great.", "zh": "哇，真棒。" }
+    ]
+  },
+  "text": {
+    "title": "In the Classroom",
+    "en": "Zoe has a new pencil case. Her aunt is a designer, and it is a gift from her. Irene likes it very much. Zoe's uncle is a vet, and he takes care of sick animals.",
+    "zh": "Zoe 有一個新的鉛筆盒。她的阿姨是設計師，這是阿姨送的禮物。Irene 很喜歡。Zoe 的叔叔是獸醫，他照顧生病的動物。"
+  },
+  "reading": {
+    "title": "A Saturday Picnic",
+    "en": "The Park family has a picnic this Saturday. Nick plays the guitar, Ann takes photos, and Ben flies a kite. Their grandparents sit on a bench and tell stories. In the afternoon, Mr. Park buys ice cream for everyone.",
+    "zh": "這個星期六，朴一家去野餐。Nick 彈吉他，Ann 拍照，Ben 放風箏。祖父母坐在長椅上說故事。下午，朴先生買冰淇淋給大家。"
+  },
+  "vocabulary": [
+    { "word": "designer", "translation": "設計師", "pos": "n.", "examples": [ { "en": "My aunt is a designer.", "zh": "我的阿姨是設計師。" } ] },
+    { "word": "vet", "translation": "獸醫", "pos": "n.", "examples": [ { "en": "He is a vet at the animal hospital.", "zh": "他是動物醫院的獸醫。" } ] },
+    { "word": "take care of", "translation": "照顧", "pos": "phr.", "examples": [ { "en": "He takes care of animals.", "zh": "他照顧動物。" } ] },
+    { "word": "bookstore", "translation": "書店", "pos": "n.", "examples": [ { "en": "Mr. Park works at a bookstore.", "zh": "朴先生在書店工作。" } ] },
+    { "word": "nurse", "translation": "護士", "pos": "n.", "examples": [ { "en": "Mrs. Park is a nurse.", "zh": "朴太太是護士。" } ] },
+    { "word": "cousin", "translation": "堂表兄弟姊妹", "pos": "n.", "examples": [ { "en": "Ben is their cousin.", "zh": "Ben 是他們的表弟。" } ] },
+    { "word": "picnic", "translation": "野餐", "pos": "n.", "examples": [ { "en": "They have a picnic in the park.", "zh": "他們在公園野餐。" } ] },
+    { "word": "bench", "translation": "長椅", "pos": "n.", "examples": [ { "en": "Grandparents sit on a bench.", "zh": "祖父母坐在長椅上。" } ] },
+    { "word": "kite", "translation": "風箏", "pos": "n.", "examples": [ { "en": "Ben flies a kite.", "zh": "Ben 放風箏。" } ] },
+    { "word": "story", "translation": "故事", "pos": "n.", "examples": [ { "en": "They tell stories in the afternoon.", "zh": "他們下午說故事。" } ] }
+  ]
+}
